@@ -1,0 +1,114 @@
+---
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+# Enable the hooks for this repo
+# > pip install --user --upgrade uv
+# > uv tool install pre-commit
+# > pre-commit install
+
+# yamllint disable rule:line-length
+
+# Completely exclude certain files from checks
+# exclude: |
+#   (?x)^(
+#     vendor/.**|
+#     dir2/.*
+#   )$
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files  # Prevents giant files from being committed
+      - id: check-docstring-first    # Prevent code before docstring
+      - id: check-json               # Check that JSON files are valid
+        exclude: |
+          (?x)^(
+                .devcontainer/devcontainer.json
+          )$
+      - id: check-merge-conflict     # Check merge conflict strings
+      - id: check-symlinks           # Ensure symlinks have a valid target
+      - id: check-toml               # Ensure toml files are valid
+      - id: check-xml                # Check that XML files are valid
+      - id: debug-statements         # debugger imports and breakpoint() calls
+      - id: end-of-file-fixer        # File is empty or ends with one newline
+      - id: fix-byte-order-marker    # Forbid utf-8 byte order marker
+      - id: trailing-whitespace      # Trims trailing whitespace
+        args: [--markdown-linebreak-ext=md]
+        # exclude: |
+        #   (?x)^(
+        #         test\.py|
+        #         testdata/.*
+        #     )$
+
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      # Lint restructuredText files
+      - id: rst-backticks
+      - id: rst-directive-colons
+      - id: rst-inline-touching-normal
+      # Forbid UTF-8 replacement character
+      - id: text-unicode-replacement-char
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: "v1.37.1"
+    hooks:
+      # Lint yaml files
+      - id: yamllint
+        args: ["--strict", "-c", ".github/yamllint-config.yaml"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: "v0.12.5"
+    hooks:
+      # Note: lint/fix before format
+      - id: ruff-check
+      # args: [ --fix ]
+      - id: ruff-format
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: "0.8.3"
+    hooks:
+      - id: uv-lock
+
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      # Lint Dockerfiles
+      - id: hadolint
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: "v0.45.0"
+    hooks:
+      # Lint markdown files
+      - id: markdownlint
+        exclude: |
+          (?x)^(
+                .github/pull_request_template.md
+            )$
+
+  - repo: https://github.com/renovatebot/pre-commit-hooks
+    rev: "41.43.0"
+    hooks:
+      # Validate Renovate's configuration file
+      - id: renovate-config-validator
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      # Prevent secrets from being committed
+      - id: detect-secrets
+      #  args: ['--baseline', '.secrets.baseline']
+      #  exclude: package.lock.json
+
+  - repo: https://gitlab.com/bmares/check-json5
+    rev: "v1.0.0"
+    hooks:
+      # Check that JSON files are valid JSON5
+      - id: check-json5

@@ -1,0 +1,62 @@
+{
+  // JSON5 spec: https://json5.org/
+  // Renovate docs: https://docs.renovatebot.com/configuration-options/
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended", // Use recommended settings
+    "docker:pinDigests", // Pin container digests
+    "helpers:pinGitHubActionDigests", // Pin GitHub action digests
+    ":enablePreCommit", // Enable updates to pre-commit repos
+    ":gitSignOff", // Add Signed-off-by line to commit messages
+    ":pinDependencies", // Pin dependencies
+    ":pinDevDependencies" // Pin dev dependencies also
+  ],
+  // Files to ignore
+  "ignorePaths": [
+    ".venv"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "Update golang tag in dockerfile & golang version in workflows in a single PR",
+      "groupName": "golang version",
+      "matchDepNames": [
+        "go",
+        "golang"
+      ]
+    },
+    {
+      // Features can be pinned, but they don't support the standard :tag@sha256
+      // syntax. It's just one or the other.
+      // See: https://github.com/devcontainers/cli/issues/825
+      "description": "Devcontainer 'features' don't support digest pinning",
+      "matchManagers": [
+        "devcontainer"
+      ],
+      "matchDepTypes": [
+        "feature"
+      ],
+      "pinDigests": false
+    },
+    {
+      "description": "Update renovatebot/pre-commit-hooks weekly to decrease noise",
+      "matchPackageNames": [
+        "renovatebot/pre-commit-hooks"
+      ],
+      "schedule": [
+        "before 9am on monday"
+      ]
+    }
+  ],
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 0,
+  "rebaseWhen": "behind-base-branch",
+  // "schedule": ["before 7am on Tuesday"],
+  "semanticCommits": "disabled",
+  "timezone": "America/New_York"
+}

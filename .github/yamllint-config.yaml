@@ -1,0 +1,21 @@
+---
+# https://yamllint.readthedocs.io/en/stable/configuration.html
+
+extends: default
+
+# Files to ignore can be added to pre-commit config
+# ignore: |
+#   hack/crds/*
+#   config/**
+#   bundle/**
+
+rules:
+  comments:  # renovate-bot dosen't put 2 spaces before the version number
+    ignore: |
+      .github/workflows/*
+  indentation:
+    indent-sequences: consistent
+  line-length:
+    allow-non-breakable-inline-mappings: true
+  new-lines:
+    type: platform

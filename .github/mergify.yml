@@ -1,0 +1,22 @@
+---
+# https://docs.mergify.com/
+queue_rules:
+  - name: default
+    queue_conditions:
+      - or:
+          # Auto merge from these users
+          - author=JohnStrunk
+          - author=renovate-bot
+          # Everyone else requires a review
+          - "#approved-reviews-by>=1"
+      - "#changes-requested-reviews-by=0"
+      - label!=do-not-merge
+      - check-success="CI Workflow - Success"
+    merge_conditions: []
+    merge_method: merge
+
+pull_request_rules:
+  - name: Automatic merge
+    conditions: []
+    actions:
+      queue:
