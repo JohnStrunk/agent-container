@@ -1,0 +1,106 @@
+#! /bin/bash
+
+set -e -o pipefail
+
+WORKTREE_BASE_DIR=~/src/worktrees
+IMAGE_NAME="ghcr.io/johnstrunk/agent-container"
+
+function usage {
+    cat - <<EOF
+$0: Start using a coding agent on a git worktree
+Usage: $0 <branch_name>
+  <branch_name>: The name of the branch to create or switch to
+
+* Worktrees are stored in $WORKTREE_BASE_DIR.
+* If the branch does not exist, it will be created from the current HEAD.
+* If the branch exists, it will switch to that branch.
+EOF
+}
+
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+
+function start_claude {
+    echo "Starting Claude Code..."
+    npx @anthropic-ai/claude-code
+}
+
+function start_gemini {
+    echo "Starting GeminiCLI..."
+    export GEMINI_SANDBOX=docker
+    export SANDBOX_FLAGS="--security-opt label=disable"
+    npx https://github.com/google-gemini/gemini-cli
+}
+
+function build_image {
+    echo "Building agent container image from $SCRIPT_DIR ..."
+    docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
+}
+
+if [[ $# -lt 1 ]]; then
+    usage
+    exit 1
+fi
+
+# Ensure the container image is built
+build_image
+
+# Create the base directory if it doesn't exist
+mkdir -p "$WORKTREE_BASE_DIR"
+
+BRANCH_NAME="$1"
+if [[ -z "$BRANCH_NAME" ]]; then
+    usage
+    exit 1
+fi
+
+REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
+WORKTREE_DIR="$WORKTREE_BASE_DIR/${REPO_NAME}-${BRANCH_NAME}"
+
+# Check if worktree already exists
+if [[ -d "$WORKTREE_DIR" ]]; then
+    echo "Worktree for branch '$BRANCH_NAME' already exists at $WORKTREE_DIR."
+else
+    # Check if branch exists
+    if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+        echo "Adding worktree for existing branch '$BRANCH_NAME'..."
+        git worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
+    else
+        echo "Creating branch '$BRANCH_NAME' from current HEAD and adding worktree..."
+        git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+    fi
+fi
+
+# Need to make the main repo directory available in the container
+MAIN_REPO_DIR=$(awk '{ print $2 }' "${WORKTREE_DIR}/.git")
+MAIN_REPO_DIR="${MAIN_REPO_DIR%%.git*}"
+
+# Start the agent container, mounting the worktree
+echo "Starting agent container on $WORKTREE_DIR..."
+
+
+# We give access to the Docker socket to allow starting MCP servers from within the container
+docker run --rm -it \
+    -v "$WORKTREE_DIR:/worktree" \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$HOME/.gemini:/.gemini" \
+    -v "$HOME/.claude:/.claude" \
+    -v "$HOME/.claude.json:/.claude.json" \
+    -v "$HOME/.config/gcloud:/.gcloud" \
+    -v "$MAIN_REPO_DIR:$MAIN_REPO_DIR" \
+    -v "$HOME/.cache/pre-commit:/.pre-commit" \
+    -w /worktree \
+    -e EUID="$(id -u)" \
+    -e EGID="$(id -g)" \
+    \
+    -e GEMINI_API_KEY="$GEMINI_API_KEY" \
+    \
+    -e ANTHROPIC_MODEL="$ANTHROPIC_MODEL" \
+    -e ANTHROPIC_SMALL_FAST_MODEL="$ANTHROPIC_SMALL_FAST_MODEL" \
+    -e ANTHROPIC_VERTEX_PROJECT_ID="$ANTHROPIC_VERTEX_PROJECT_ID" \
+    -e CLOUD_ML_REGION="$CLOUD_ML_REGION" \
+    -e CLAUDE_CODE_USE_VERTEX="$CLAUDE_CODE_USE_VERTEX" \
+    \
+    ghcr.io/johnstrunk/agent-container:latest
+
+# Remove the worktree after exiting the container
+git worktree remove "$WORKTREE_DIR" || echo "Not removing worktree $(basename "$WORKTREE_DIR"), it may still be in use."
