@@ -28,8 +28,9 @@ RUN curl -fsSLo /tmp/hadolint https://github.com/hadolint/hadolint/releases/down
     rm -f /tmp/hadolint
 
 # Install Python-based tools
-# hadolint ignore=DL3013
-RUN pip install --no-cache-dir --break-system-packages \
+# hadolint ignore=DL3013,DL3042
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --break-system-packages \
     pipenv \
     poetry \
     pre-commit
