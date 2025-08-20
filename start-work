@@ -55,6 +55,7 @@ fi
 
 REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
 WORKTREE_DIR="$WORKTREE_BASE_DIR/${REPO_NAME}-${BRANCH_NAME}"
+CONTANIER_NAME="${REPO_NAME}-${BRANCH_NAME}"
 
 # Check if worktree already exists
 if [[ -d "$WORKTREE_DIR" ]]; then
@@ -78,27 +79,31 @@ MAIN_REPO_DIR="${MAIN_REPO_DIR%%.git*}"
 echo "Starting agent container on $WORKTREE_DIR..."
 
 
-# We give access to the Docker socket to allow starting MCP servers from within the container
+# - Give access to the Docker socket to allow starting MCP servers from within the container
+# - Mount the main repo directory to allow access to the main repository files for the worktree
+# - Mount the pre-commit cache to avoid re-installing pre-commit hooks every time
 docker run --rm -it \
+    --name "$CONTANIER_NAME" \
+    --hostname "$CONTANIER_NAME" \
     -v "$WORKTREE_DIR:/worktree" \
     -v /var/run/docker.sock:/var/run/docker.sock \
-    -v "$HOME/.gemini:/.gemini" \
-    -v "$HOME/.claude:/.claude" \
-    -v "$HOME/.claude.json:/.claude.json" \
-    -v "$HOME/.config/gcloud:/.gcloud" \
     -v "$MAIN_REPO_DIR:$MAIN_REPO_DIR" \
-    -v "$HOME/.cache/pre-commit:/.pre-commit" \
+    -v "agent-container-pre-commit-cache:/.pre-commit" \
     -w /worktree \
     -e EUID="$(id -u)" \
     -e EGID="$(id -g)" \
     \
     -e GEMINI_API_KEY="$GEMINI_API_KEY" \
+    -v "$HOME/.gemini:/.gemini" \
     \
     -e ANTHROPIC_MODEL="$ANTHROPIC_MODEL" \
     -e ANTHROPIC_SMALL_FAST_MODEL="$ANTHROPIC_SMALL_FAST_MODEL" \
     -e ANTHROPIC_VERTEX_PROJECT_ID="$ANTHROPIC_VERTEX_PROJECT_ID" \
     -e CLOUD_ML_REGION="$CLOUD_ML_REGION" \
     -e CLAUDE_CODE_USE_VERTEX="$CLAUDE_CODE_USE_VERTEX" \
+    -v "$HOME/.claude:/.claude" \
+    -v "$HOME/.claude.json:/.claude.json" \
+    -v "$HOME/.config/gcloud:/.gcloud" \
     \
     ghcr.io/johnstrunk/agent-container:latest
 
