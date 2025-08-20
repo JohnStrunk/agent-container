@@ -93,19 +93,25 @@ docker run --rm -it \
     -e EUID="$(id -u)" \
     -e EGID="$(id -g)" \
     \
-    -e GEMINI_API_KEY="$GEMINI_API_KEY" \
+    -e GEMINI_API_KEY \
     -v "$HOME/.gemini:/.gemini" \
     \
-    -e ANTHROPIC_MODEL="$ANTHROPIC_MODEL" \
-    -e ANTHROPIC_SMALL_FAST_MODEL="$ANTHROPIC_SMALL_FAST_MODEL" \
-    -e ANTHROPIC_VERTEX_PROJECT_ID="$ANTHROPIC_VERTEX_PROJECT_ID" \
-    -e CLOUD_ML_REGION="$CLOUD_ML_REGION" \
-    -e CLAUDE_CODE_USE_VERTEX="$CLAUDE_CODE_USE_VERTEX" \
+    -e ANTHROPIC_MODEL \
+    -e ANTHROPIC_SMALL_FAST_MODEL \
+    -e ANTHROPIC_VERTEX_PROJECT_ID \
+    -e CLOUD_ML_REGION \
+    -e CLAUDE_CODE_USE_VERTEX \
     -v "$HOME/.claude:/.claude" \
     -v "$HOME/.claude.json:/.claude.json" \
     -v "$HOME/.config/gcloud:/.gcloud" \
     \
     ghcr.io/johnstrunk/agent-container:latest
+
+# If .cloude/settings.local.json exists in the worktree, display its contents
+if [[ -f "$WORKTREE_DIR/.claude/settings.local.json" ]]; then
+    echo -e "\n\n=== .claude/settings.local.json: ==="
+    jq -r . "$WORKTREE_DIR/.claude/settings.local.json"
+fi
 
 # Remove the worktree after exiting the container
 git worktree remove "$WORKTREE_DIR" || echo "Not removing worktree $(basename "$WORKTREE_DIR"), it may still be in use."
