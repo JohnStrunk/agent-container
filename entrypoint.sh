@@ -21,14 +21,17 @@ if [[ -S /var/run/docker.sock ]]; then
     groupadd -g "$DOCKER_GID" docker || true
     usermod -aG docker "$USERNAME"
 fi
+chown "$USERNAME":"$USERNAME" "/.pre-commit"
 
-mkdir -p "/home/$USERNAME/.config"
-mkdir -p "/home/$USERNAME/.cache"
+gosu "$USERNAME" mkdir -p "/home/$USERNAME/.config"
+gosu "$USERNAME" mkdir -p "/home/$USERNAME/.cache"
 
 ln -s /.gemini "/home/$USERNAME/.gemini"
 ln -s /.claude "/home/$USERNAME/.claude"
 ln -s /.claude.json "/home/$USERNAME/.claude.json"
 ln -s /.gcloud "/home/$USERNAME/.config/gcloud"
 ln -s /.pre-commit "/home/$USERNAME/.cache/pre-commit"
+gosu "$USERNAME" pre-commit gc > /dev/null 2>&1 || true
+(gosu "$USERNAME" pre-commit install-hooks > /dev/null 2>&1 || true) &
 
 exec gosu "$USERNAME" "$@"

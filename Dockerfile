@@ -9,12 +9,19 @@ RUN --mount=type=cache,target=/var/cache/apt \
     apt-get install -y --no-install-recommends \
     curl \
     docker-cli \
+    findutils \
     git \
     gosu \
+    jq \
+    less \
     nodejs \
     npm \
+    procps \
+    psmisc \
     python3 \
-    python3-pip
+    python3-pip \
+    vim \
+    yq
 
 # Allow higher UID/GID range for useradd
 RUN sed -i 's/^UID_MIN.*/UID_MIN 1000/' /etc/login.defs && \
