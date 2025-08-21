@@ -30,7 +30,7 @@ RUN sed -i 's/^UID_MIN.*/UID_MIN 1000/' /etc/login.defs && \
     sed -i 's/^UID_MAX.*/UID_MAX 200000/' /etc/login.defs
 
 # Install uv and uvx from the official Astral image
-COPY --from=ghcr.io/astral-sh/uv:latest@sha256:f64ad69940b634e75d2e4d799eb5238066c5eeda49f76e782d4873c3d014ea33 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:latest@sha256:4de5495181a281bc744845b9579acf7b221d6791f99bcc211b9ec13f417c2853 /uv /uvx /bin/
 
 RUN curl -fsSLo /tmp/hadolint https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64 && \
     install /tmp/hadolint /usr/local/bin && \
