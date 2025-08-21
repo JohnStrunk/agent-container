@@ -19,21 +19,26 @@ EOF
 
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 
-function start_claude {
-    echo "Starting Claude Code..."
-    npx @anthropic-ai/claude-code
-}
-
-function start_gemini {
-    echo "Starting GeminiCLI..."
-    export GEMINI_SANDBOX=docker
-    export SANDBOX_FLAGS="--security-opt label=disable"
-    npx https://github.com/google-gemini/gemini-cli
-}
-
 function build_image {
     echo "Building agent container image from $SCRIPT_DIR ..."
     docker build -t "$IMAGE_NAME" "$SCRIPT_DIR"
+}
+
+function setup_worktree {
+    local worktree_dir="$1"
+    local branch_name="$2"
+    if [[ -d "$worktree_dir" ]]; then
+        echo "Worktree for branch '$branch_name' already exists at $worktree_dir."
+    else
+        # Check if branch exists
+        if git show-ref --verify --quiet "refs/heads/$branch_name"; then
+            echo "Adding worktree for existing branch '$branch_name'..."
+            git worktree add "$worktree_dir" "$branch_name"
+        else
+            echo "Creating branch '$branch_name' from current HEAD and adding worktree..."
+            git worktree add -b "$branch_name" "$worktree_dir"
+        fi
+    fi
 }
 
 if [[ $# -lt 1 ]]; then
@@ -53,27 +58,26 @@ if [[ -z "$BRANCH_NAME" ]]; then
     exit 1
 fi
 
-REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
-WORKTREE_DIR="$WORKTREE_BASE_DIR/${REPO_NAME}-${BRANCH_NAME}"
-CONTANIER_NAME="${REPO_NAME}-${BRANCH_NAME}"
-
-# Check if worktree already exists
-if [[ -d "$WORKTREE_DIR" ]]; then
-    echo "Worktree for branch '$BRANCH_NAME' already exists at $WORKTREE_DIR."
+if [[ -d .git ]]; then
+    IS_GIT_REPO=1
+    REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
+    WORKTREE_DIR="$WORKTREE_BASE_DIR/${REPO_NAME}-${BRANCH_NAME}"
+    CONTANIER_NAME="${REPO_NAME}-${BRANCH_NAME}"
+    setup_worktree "$WORKTREE_DIR" "$BRANCH_NAME"
 else
-    # Check if branch exists
-    if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
-        echo "Adding worktree for existing branch '$BRANCH_NAME'..."
-        git worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
-    else
-        echo "Creating branch '$BRANCH_NAME' from current HEAD and adding worktree..."
-        git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
-    fi
+    echo "NOT a git repository! --- Ignoring branch name and using current directory."
+    REPO_NAME="$(basename "$(pwd)")"
+    WORKTREE_DIR="$(pwd)"
+    CONTANIER_NAME="local-$REPO_NAME"
 fi
 
 # Need to make the main repo directory available in the container
-MAIN_REPO_DIR=$(awk '{ print $2 }' "${WORKTREE_DIR}/.git")
-MAIN_REPO_DIR="${MAIN_REPO_DIR%%.git*}"
+if [[ -n "$IS_GIT_REPO" ]]; then
+    MAIN_REPO_DIR=$(awk '{ print $2 }' "${WORKTREE_DIR}/.git")
+    MAIN_REPO_DIR="${MAIN_REPO_DIR%%.git*}"
+else
+    MAIN_REPO_DIR="$(realpath "$(pwd)")"
+fi
 
 # Start the agent container, mounting the worktree
 echo "Starting agent container on $WORKTREE_DIR..."
@@ -114,4 +118,6 @@ if [[ -f "$WORKTREE_DIR/.claude/settings.local.json" ]]; then
 fi
 
 # Remove the worktree after exiting the container
-git worktree remove "$WORKTREE_DIR" || echo "Not removing worktree $(basename "$WORKTREE_DIR"), it may still be in use."
+if [[ -n "$IS_GIT_REPO" ]]; then
+    git worktree remove "$WORKTREE_DIR" || echo "Not removing worktree $(basename "$WORKTREE_DIR"), it may still be in use."
+fi

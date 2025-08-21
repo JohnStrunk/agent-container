@@ -20,6 +20,8 @@ RUN --mount=type=cache,target=/var/cache/apt \
     psmisc \
     python3 \
     python3-pip \
+    tcl \
+    tk \
     vim \
     yq
 
