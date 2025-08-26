@@ -8,12 +8,13 @@ IMAGE_NAME="ghcr.io/johnstrunk/agent-container"
 function usage {
     cat - <<EOF
 $0: Start using a coding agent on a git worktree
-Usage: $0 <branch_name>
+Usage: $0 [<branch_name>]
   <branch_name>: The name of the branch to create or switch to
 
 * Worktrees are stored in $WORKTREE_BASE_DIR.
 * If the branch does not exist, it will be created from the current HEAD.
 * If the branch exists, it will switch to that branch.
+* If not in a git repository or a branch name is not provided, the current directory will be used.
 EOF
 }
 
@@ -41,9 +42,11 @@ function setup_worktree {
     fi
 }
 
-if [[ $# -lt 1 ]]; then
-    usage
-    exit 1
+if [[ $# -eq 1  && -d .git ]]; then
+    USE_GIT=1
+    BRANCH_NAME="$1"
+else
+    USE_GIT=0
 fi
 
 # Ensure the container image is built
@@ -52,27 +55,20 @@ build_image
 # Create the base directory if it doesn't exist
 mkdir -p "$WORKTREE_BASE_DIR"
 
-BRANCH_NAME="$1"
-if [[ -z "$BRANCH_NAME" ]]; then
-    usage
-    exit 1
-fi
-
-if [[ -d .git ]]; then
-    IS_GIT_REPO=1
+if [[ "$USE_GIT" == 1 ]]; then
     REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
     WORKTREE_DIR="$WORKTREE_BASE_DIR/${REPO_NAME}-${BRANCH_NAME}"
     CONTANIER_NAME="${REPO_NAME}-${BRANCH_NAME}"
     setup_worktree "$WORKTREE_DIR" "$BRANCH_NAME"
 else
-    echo "NOT a git repository! --- Ignoring branch name and using current directory."
+    echo "Using current directory."
     REPO_NAME="$(basename "$(pwd)")"
     WORKTREE_DIR="$(pwd)"
     CONTANIER_NAME="local-$REPO_NAME"
 fi
 
 # Need to make the main repo directory available in the container
-if [[ -n "$IS_GIT_REPO" ]]; then
+if [[ "$USE_GIT" == 1 ]]; then
     MAIN_REPO_DIR=$(awk '{ print $2 }' "${WORKTREE_DIR}/.git")
     MAIN_REPO_DIR="${MAIN_REPO_DIR%%.git*}"
 else
@@ -118,6 +114,6 @@ if [[ -f "$WORKTREE_DIR/.claude/settings.local.json" ]]; then
 fi
 
 # Remove the worktree after exiting the container
-if [[ -n "$IS_GIT_REPO" ]]; then
+if [[ "$USE_GIT" == 1 ]]; then
     git worktree remove "$WORKTREE_DIR" || echo "Not removing worktree $(basename "$WORKTREE_DIR"), it may still be in use."
 fi
