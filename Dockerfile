@@ -34,6 +34,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
     python3-pip \
     ripgrep \
     rsync \
+    shellcheck \
     socat \
     tcl \
     tk \
