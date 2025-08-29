@@ -2,6 +2,7 @@ FROM debian:13-slim@sha256:c85a2732e97694ea77237c61304b3bb410e0e961dd6ee945997a0
 
 ARG GOLANG_VERSION=1.25.0
 ARG HADOLINT_VERSION=2.12.0
+ENV PYTHON_TOOLS=pipenv,poetry,pre-commit
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
@@ -10,21 +11,33 @@ RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
     apt-get update && \
     apt-get install -y --no-install-recommends \
+    bc \
+    ca-certificates \
     curl \
     docker-cli \
+    dnsutils \
     findutils \
+    g++ \
+    gh \
     git \
     gosu \
     jq \
     less \
+    lsof \
+    make \
+    man-db \
     nodejs \
     npm \
     procps \
     psmisc \
     python3 \
     python3-pip \
+    ripgrep \
+    rsync \
+    socat \
     tcl \
     tk \
+    unzip \
     vim \
     yq
 
@@ -40,14 +53,6 @@ RUN curl -fsSLo /tmp/hadolint https://github.com/hadolint/hadolint/releases/down
     install /tmp/hadolint /usr/local/bin && \
     rm -f /tmp/hadolint
 
-# Install Python-based tools
-# hadolint ignore=DL3013,DL3042
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --break-system-packages \
-    pipenv \
-    poetry \
-    pre-commit
-
 # Install golang
 RUN curl -fsSLo /tmp/go.tar.gz https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf /tmp/go.tar.gz && \
@@ -56,9 +61,12 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 
 # Install coding agents
 # hadolint ignore=DL3016
-RUN npm install -g @anthropic-ai/claude-code && \
-    npm install -g @google/gemini-cli
+RUN npm install -g \
+    @anthropic-ai/claude-code@latest \
+    @google/gemini-cli@latest
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod a+x /entrypoint.sh
+RUN chmod a+rx /entrypoint.sh
+COPY entrypoint_user.sh /entrypoint_user.sh
+RUN chmod a+rx /entrypoint_user.sh
 ENTRYPOINT ["/entrypoint.sh"]
