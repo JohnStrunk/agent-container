@@ -2,7 +2,7 @@ FROM debian:13-slim@sha256:c2880112cc5c61e1200c26f106e4123627b49726375eb5846313d
 
 ARG GOLANG_VERSION=1.25.0
 ARG HADOLINT_VERSION=2.12.0
-ENV PYTHON_TOOLS=pipenv,poetry,pre-commit
+ENV PYTHON_TOOLS=dvc[all],pipenv,poetry,pre-commit
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
