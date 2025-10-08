@@ -5,6 +5,16 @@ set -e -o pipefail
 WORKTREE_BASE_DIR=~/src/worktrees
 IMAGE_NAME="ghcr.io/johnstrunk/agent-container"
 
+# Paths to mount at the same location inside the container
+# Only paths that exist on the host will be mounted
+CONTAINER_MOUNTS=(
+    "$HOME/.gemini"
+    "$HOME/.claude"
+    "$HOME/.claude.json"
+    "$HOME/.config/gcloud"
+    "$HOME/.cache/pre-commit"
+)
+
 function usage {
     cat - <<EOF
 $0: Start using a coding agent on a git worktree
@@ -98,6 +108,33 @@ else
     MAIN_REPO_DIR="$(realpath "$(pwd)")"
 fi
 
+# Build mount arguments for existing paths
+MOUNT_ARGS=()
+MOUNTED_PATHS=()
+for path in "${CONTAINER_MOUNTS[@]}"; do
+    if [[ -e "$path" ]]; then
+        MOUNT_ARGS+=("-v" "$path:$path")
+        MOUNTED_PATHS+=("$path")
+        echo "Mounting: $path"
+    else
+        echo "Skipping non-existent path: $path"
+    fi
+done
+
+# Add the main repo directory to the list of paths that need parent ownership fixed
+MOUNTED_PATHS+=("$MAIN_REPO_DIR")
+
+# Create colon-separated list of mounted paths for the container
+CONTAINER_MOUNT_PATHS=$(IFS=':'; echo "${MOUNTED_PATHS[*]}")
+
+# Core mounts (always needed)
+MOUNT_ARGS+=(
+    "-v" "$WORKTREE_DIR:/worktree"
+    "-v" "/var/run/docker.sock:/var/run/docker.sock"
+    "-v" "$MAIN_REPO_DIR:$MAIN_REPO_DIR"
+    "-v" "agent-container-pre-commit-cache:/.pre-commit-fallback"
+)
+
 # Start the agent container, mounting the worktree
 if [[ ${#CONTAINER_COMMAND[@]} -gt 0 ]]; then
     echo "Starting agent container on $WORKTREE_DIR and executing: ${CONTAINER_COMMAND[*]}"
@@ -105,33 +142,22 @@ else
     echo "Starting agent container on $WORKTREE_DIR..."
 fi
 
-
-# - Give access to the Docker socket to allow starting MCP servers from within the container
-# - Mount the main repo directory to allow access to the main repository files for the worktree
-# - Mount the pre-commit cache to avoid re-installing pre-commit hooks every time
 docker run --rm -it \
     --name "$CONTANIER_NAME" \
     --hostname "$CONTANIER_NAME" \
-    -v "$WORKTREE_DIR:/worktree" \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -v "$MAIN_REPO_DIR:$MAIN_REPO_DIR" \
-    -v "agent-container-pre-commit-cache:/.pre-commit" \
+    "${MOUNT_ARGS[@]}" \
     -w /worktree \
     -e EUID="$(id -u)" \
     -e EGID="$(id -g)" \
-    \
+    -e HOME="$HOME" \
+    -e USER="$USER" \
+    -e CONTAINER_MOUNT_PATHS="$CONTAINER_MOUNT_PATHS" \
     -e GEMINI_API_KEY \
-    -v "$HOME/.gemini:/.gemini" \
-    \
     -e ANTHROPIC_MODEL \
     -e ANTHROPIC_SMALL_FAST_MODEL \
     -e ANTHROPIC_VERTEX_PROJECT_ID \
     -e CLOUD_ML_REGION \
     -e CLAUDE_CODE_USE_VERTEX \
-    -v "$HOME/.claude:/.claude" \
-    -v "$HOME/.claude.json:/.claude.json" \
-    -v "$HOME/.config/gcloud:/.gcloud" \
-    \
     ghcr.io/johnstrunk/agent-container:latest "${CONTAINER_COMMAND[@]}"
 
 # If .cloude/settings.local.json exists in the worktree, display its contents
