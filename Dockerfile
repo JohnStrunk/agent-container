@@ -49,6 +49,16 @@ RUN sed -i 's/^UID_MIN.*/UID_MIN 1000/' /etc/login.defs && \
 # Install uv and uvx from the official Astral image
 COPY --from=ghcr.io/astral-sh/uv:latest@sha256:8f926a80debadba6f18442030df316c0e2b28d6af62d1292fb44b1c874173dc0 /uv /uvx /bin/
 
+# Install Python tools globally during build to avoid runtime delay
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+# hadolint ignore=DL3013
+RUN echo "Installing Python tools globally..." && \
+    for tool in $(echo "$PYTHON_TOOLS" | tr ',' ' '); do \
+        echo "Installing $tool..." && \
+        pip install --no-cache-dir --break-system-packages "$tool"; \
+    done && \
+    echo "Python tools installation complete"
+
 # Install hadolint
 RUN curl -fsSLo /tmp/hadolint https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64 && \
     install /tmp/hadolint /usr/local/bin && \
