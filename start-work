@@ -121,15 +121,16 @@ for path in "${CONTAINER_MOUNTS[@]}"; do
     fi
 done
 
-# Add the main repo directory to the list of paths that need parent ownership fixed
+# Add the main repo directory and worktree directory to the list of paths that need parent ownership fixed
 MOUNTED_PATHS+=("$MAIN_REPO_DIR")
+MOUNTED_PATHS+=("$WORKTREE_DIR")
 
 # Create colon-separated list of mounted paths for the container
 CONTAINER_MOUNT_PATHS=$(IFS=':'; echo "${MOUNTED_PATHS[*]}")
 
 # Core mounts (always needed)
 MOUNT_ARGS+=(
-    "-v" "$WORKTREE_DIR:/worktree"
+    "-v" "$WORKTREE_DIR:$WORKTREE_DIR"
     "-v" "/var/run/docker.sock:/var/run/docker.sock"
     "-v" "$MAIN_REPO_DIR:$MAIN_REPO_DIR"
     "-v" "agent-container-pre-commit-cache:/.pre-commit-fallback"
@@ -146,7 +147,7 @@ docker run --rm -it \
     --name "$CONTANIER_NAME" \
     --hostname "$CONTANIER_NAME" \
     "${MOUNT_ARGS[@]}" \
-    -w /worktree \
+    -w "$WORKTREE_DIR" \
     -e EUID="$(id -u)" \
     -e EGID="$(id -g)" \
     -e HOME="$HOME" \
