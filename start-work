@@ -8,11 +8,12 @@ IMAGE_NAME="ghcr.io/johnstrunk/agent-container"
 # Paths to mount at the same location inside the container
 # Only paths that exist on the host will be mounted
 CONTAINER_MOUNTS=(
-    "$HOME/.gemini"
+    "$HOME/.cache/pre-commit"
     "$HOME/.claude"
     "$HOME/.claude.json"
     "$HOME/.config/gcloud"
-    "$HOME/.cache/pre-commit"
+    "$HOME/.gemini"
+    "$HOME/Documents/Obsidian/RedHat"
 )
 
 function usage {
