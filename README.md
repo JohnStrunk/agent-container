@@ -1,7 +1,7 @@
 # Agent Container
 
 A Docker-based development environment for working with AI coding agents
-(Claude Code and Gemini CLI) using Git worktrees.
+(Claude Code, Gemini CLI, and GitHub Copilot CLI) using Git worktrees.
 
 ## Overview
 
@@ -10,14 +10,16 @@ work with AI coding agents on isolated Git branches using worktrees. The
 container comes pre-configured with:
 
 - **Claude Code** - Anthropic's AI coding assistant
-- **Gemini CLI** - Google's AI coding assistant  
+- **Gemini CLI** - Google's AI coding assistant
+- **GitHub Copilot CLI** - GitHub's AI coding assistant
 - **Development tools** - Git, Node.js, Python, Docker CLI, and more
 - **Code quality tools** - pre-commit, hadolint, pipenv, poetry
 
 ## Features
 
 - **Isolated Development**: Each branch gets its own worktree and container instance
-- **AI Agent Support**: Pre-installed Claude Code and Gemini CLI
+- **AI Agent Support**: Pre-installed Claude Code, Gemini CLI, and
+  GitHub Copilot CLI
 - **Docker Integration**: Access to Docker socket for running additional containers
 - **User Permissions**: Proper UID/GID mapping to avoid permission issues
 - **Persistent Configuration**: Mounts for AI agent configurations and caches
@@ -67,8 +69,11 @@ Once in the container, you can use:
 # Start Claude Code
 claude
 
-# Start Gemini CLI  
+# Start Gemini CLI
 gemini
+
+# Start GitHub Copilot CLI
+copilot
 ```
 
 ### Configuration
@@ -96,6 +101,11 @@ Set these environment variables to configure the AI agents:
 
 - `GEMINI_API_KEY` - API key for Gemini
 
+**GitHub Copilot CLI:**
+
+- `GH_TOKEN` or `GITHUB_TOKEN` - Personal Access Token with "Copilot Requests" permission
+- Requires an active GitHub Copilot subscription
+
 ## Requirements
 
 - Docker
@@ -114,7 +124,7 @@ Set these environment variables to configure the AI agents:
 The container is based on Debian 13 slim and includes:
 
 - **Runtime**: Node.js, Python 3, Docker CLI
-- **AI Agents**: Claude Code, Gemini CLI  
+- **AI Agents**: Claude Code, Gemini CLI, GitHub Copilot CLI  
 - **Development Tools**: Git, curl, gosu
 - **Python Tools**: pip, pipenv, poetry, pre-commit, uv
 - **Linting**: hadolint for Dockerfile linting

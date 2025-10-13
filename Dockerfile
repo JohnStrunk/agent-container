@@ -74,7 +74,8 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 # hadolint ignore=DL3016
 RUN npm install -g \
     @anthropic-ai/claude-code@latest \
-    @google/gemini-cli@latest
+    @google/gemini-cli@latest \
+    @github/copilot@latest
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod a+rx /entrypoint.sh
