@@ -1,0 +1,50 @@
+#cloud-config
+hostname: ${hostname}
+fqdn: ${hostname}.local
+manage_etc_hosts: true
+
+users:
+  - name: ${default_user}
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+%{ for key in ssh_keys ~}
+      - ${key}
+%{ endfor ~}
+  - name: root
+    ssh_authorized_keys:
+%{ for key in ssh_keys ~}
+      - ${key}
+%{ endfor ~}
+
+# Enable root login via SSH
+ssh_pwauth: false
+disable_root: false
+
+# Configure serial console auto-login as root
+runcmd:
+  - mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
+  - |
+    cat > /etc/systemd/system/serial-getty@ttyS0.service.d/override.conf <<EOF
+    [Service]
+    ExecStart=
+    ExecStart=-/sbin/agetty --autologin root --noclear %I \$TERM
+    EOF
+  - systemctl daemon-reload
+  - systemctl restart serial-getty@ttyS0.service
+  - |
+    sed -i 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+  - systemctl restart sshd
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - vim
+  - curl
+  - wget
+  - git
+  - htop
+
+final_message: "System boot complete. Console auto-login enabled for root."
