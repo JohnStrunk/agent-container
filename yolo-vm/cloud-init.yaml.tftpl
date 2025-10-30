@@ -44,8 +44,6 @@ runcmd:
   - |
     sed -i 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
   - systemctl restart sshd
-  # Create directory for GCP credentials (needed before write_files)
-  - mkdir -p /etc/google
   # Configure Go PATH (unconditional - Go is always installed)
   - mkdir -p /etc/profile.d
   - |
