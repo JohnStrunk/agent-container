@@ -1,0 +1,14 @@
+# Example Terraform variables configuration
+# Copy to terraform.tfvars and customize
+
+vm_name     = "debian-trixie-vm"
+vm_memory   = 2048
+vm_vcpu     = 2
+vm_hostname = "debian-trixie"
+vm_disk_size = 21474836480  # 20GB
+
+default_user = "debian"
+ssh_keys_dir = "./ssh-keys"
+
+# Override Debian image URL if needed
+# debian_image_url = "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2"
