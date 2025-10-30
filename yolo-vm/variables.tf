@@ -45,3 +45,21 @@ variable "debian_image_url" {
   type        = string
   default     = "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2"
 }
+
+variable "gcp_service_account_key_path" {
+  description = "Path to GCP service account JSON key file for Vertex AI access (leave empty to skip credential injection)"
+  type        = string
+  default     = ""
+}
+
+variable "vertex_project_id" {
+  description = "Google Cloud project ID for Vertex AI (required if using claude-code with Vertex AI)"
+  type        = string
+  default     = ""
+}
+
+variable "vertex_region" {
+  description = "Google Cloud region for Vertex AI"
+  type        = string
+  default     = "us-central1"
+}
