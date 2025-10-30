@@ -25,6 +25,8 @@ ssh-keys/*
 !ssh-keys/.gitkeep
 !ssh-keys/README.md
 
-# Service account JSON keys (but allow terraform state backups)
-*.json
-!terraform.tfstate*.json
+# GCP service account credentials (prevent accidental commits)
+*service-account*.json
+*service_account*.json
+gcp-credentials.json
+application_default_credentials.json
