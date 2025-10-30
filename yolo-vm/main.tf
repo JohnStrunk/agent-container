@@ -39,19 +39,14 @@ resource "libvirt_volume" "debian_disk" {
 }
 
 # Cloud-init configuration
-data "template_file" "cloud_init" {
-  template = file("${path.module}/cloud-init.yaml.tftpl")
-  vars = {
+resource "libvirt_cloudinit_disk" "cloud_init" {
+  name = "${var.vm_name}-cloud-init.iso"
+  pool = "default"
+  user_data = templatefile("${path.module}/cloud-init.yaml.tftpl", {
     hostname     = var.vm_hostname
     default_user = var.default_user
     ssh_keys     = local.ssh_keys
-  }
-}
-
-resource "libvirt_cloudinit_disk" "cloud_init" {
-  name      = "${var.vm_name}-cloud-init.iso"
-  pool      = "default"
-  user_data = data.template_file.cloud_init.rendered
+  })
 }
 
 # Define the VM
