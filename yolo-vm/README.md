@@ -10,6 +10,10 @@ This directory contains Terraform configuration to deploy a Debian 13
 - **SSH Key Management**: Centralized SSH key directory for access control
 - **Cloud-Init Provisioning**: Automated system configuration
 - **Dual User Access**: SSH access for both default user and root
+- **AI Coding Agents**: Pre-installed claude-code, gemini-cli, and
+  copilot
+- **Vertex AI Integration**: Optional Google Cloud Vertex AI
+  authentication
 
 ## Prerequisites
 
@@ -86,6 +90,73 @@ Get VM IP from Terraform outputs:
 terraform output vm_ip
 ```
 
+## Using AI Coding Agents
+
+The VM comes pre-installed with AI coding agents:
+
+- **claude-code**: Anthropic's Claude Code agent
+- **gemini-cli**: Google's Gemini CLI
+- **copilot**: GitHub Copilot CLI
+
+### Prerequisites for Claude Code with Vertex AI
+
+1. Create a GCP service account with Vertex AI permissions:
+
+   ```bash
+   gcloud iam service-accounts create claude-code-agent \
+     --display-name="Claude Code Agent"
+
+   PROJECT="YOUR_PROJECT_ID"
+   SA="claude-code-agent@${PROJECT}.iam.gserviceaccount.com"
+
+   gcloud projects add-iam-policy-binding ${PROJECT} \
+     --member="serviceAccount:${SA}" \
+     --role="roles/aiplatform.user"
+
+   gcloud iam service-accounts keys create \
+     ~/claude-code-sa-key.json \
+     --iam-account=${SA}
+   ```
+
+2. Update `terraform.tfvars`:
+
+   ```hcl
+   gcp_service_account_key_path = "/home/user/claude-code-sa-key.json"
+   vertex_project_id = "your-gcp-project-id"
+   vertex_region = "us-central1"
+   ```
+
+3. Deploy the VM:
+
+   ```bash
+   terraform apply
+   ```
+
+### Running Claude Code
+
+SSH into the VM and run:
+
+```bash
+ssh debian@<VM_IP>
+claude-code --help
+```
+
+Environment variables are automatically configured:
+
+- `GOOGLE_APPLICATION_CREDENTIALS`
+- `ANTHROPIC_VERTEX_PROJECT_ID`
+- `CLOUD_ML_REGION`
+- `CLAUDE_CODE_USE_VERTEX`
+
+### Installed Tools
+
+All agents have access to:
+
+- **Languages**: Python 3, Go 1.25.0, Node.js
+- **Package Managers**: npm, pip, uv, poetry, pipenv
+- **Development Tools**: git, docker, jq, ripgrep
+- **Python Tools**: pre-commit, dvc
+
 ## Configuration
 
 ### Customize VM Settings
@@ -111,6 +182,11 @@ See `variables.tf` for all configurable options:
 - `default_user`: Default username (default: debian)
 - `ssh_keys_dir`: SSH keys directory (default: ./ssh-keys)
 - `debian_image_url`: Debian cloud image URL
+- `gcp_service_account_key_path`: Path to GCP service account JSON
+  key
+- `vertex_project_id`: Google Cloud project ID for Vertex AI
+- `vertex_region`: Google Cloud region for Vertex AI (default:
+  us-central1)
 
 ## Managing SSH Keys
 
