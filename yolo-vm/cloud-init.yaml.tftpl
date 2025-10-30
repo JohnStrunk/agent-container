@@ -3,6 +3,14 @@ hostname: ${hostname}
 fqdn: ${hostname}.local
 manage_etc_hosts: true
 
+%{ if gcp_service_account_key != "" ~}
+write_files:
+  - path: /etc/google/application_default_credentials.json
+    permissions: '0644'
+    content: |
+      ${indent(6, gcp_service_account_key)}
+%{ endif ~}
+
 users:
   - name: ${default_user}
     groups: sudo
@@ -36,6 +44,19 @@ runcmd:
   - |
     sed -i 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
   - systemctl restart sshd
+%{ if gcp_service_account_key != "" ~}
+  # Configure AI agent environment variables
+  - mkdir -p /etc/profile.d
+  - |
+    cat > /etc/profile.d/ai-agent.sh <<EOF
+    export GOOGLE_APPLICATION_CREDENTIALS=/etc/google/application_default_credentials.json
+    export ANTHROPIC_VERTEX_PROJECT_ID="${vertex_project_id}"
+    export CLOUD_ML_REGION="${vertex_region}"
+    export CLAUDE_CODE_USE_VERTEX="true"
+    export PATH="/usr/local/go/bin:\$PATH"
+    EOF
+  - chmod 644 /etc/profile.d/ai-agent.sh
+%{ endif ~}
   # Install Go 1.25.0
   - curl -fsSL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz -o /tmp/go.tar.gz
   - tar -C /usr/local -xzf /tmp/go.tar.gz

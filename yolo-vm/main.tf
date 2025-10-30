@@ -19,6 +19,8 @@ locals {
     for f in local.ssh_key_files :
     trimspace(file("${var.ssh_keys_dir}/${f}"))
   ]
+  # Read GCP service account key if path is provided
+  gcp_service_account_key = var.gcp_service_account_key_path != "" ? file(var.gcp_service_account_key_path) : ""
 }
 
 # Download Debian cloud image
@@ -43,9 +45,12 @@ resource "libvirt_cloudinit_disk" "cloud_init" {
   name = "${var.vm_name}-cloud-init.iso"
   pool = "default"
   user_data = templatefile("${path.module}/cloud-init.yaml.tftpl", {
-    hostname     = var.vm_hostname
-    default_user = var.default_user
-    ssh_keys     = local.ssh_keys
+    hostname                = var.vm_hostname
+    default_user            = var.default_user
+    ssh_keys                = local.ssh_keys
+    gcp_service_account_key = local.gcp_service_account_key
+    vertex_project_id       = var.vertex_project_id
+    vertex_region           = var.vertex_region
   })
 }
 
