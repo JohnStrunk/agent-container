@@ -44,7 +44,7 @@ data "template_file" "cloud_init" {
   vars = {
     hostname     = var.vm_hostname
     default_user = var.default_user
-    ssh_keys     = jsonencode(local.ssh_keys)
+    ssh_keys     = local.ssh_keys
   }
 }
 
