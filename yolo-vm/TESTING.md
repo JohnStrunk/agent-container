@@ -149,6 +149,72 @@ whoami
 
 Expected: `root`
 
+## AI Agent Testing
+
+### 1. Verify Agent Installation
+
+```bash
+ssh debian@<VM_IP> which claude-code
+ssh debian@<VM_IP> which gemini
+ssh debian@<VM_IP> which github-copilot
+```
+
+Expected: Paths to all three agents
+
+### 2. Verify Development Tools
+
+```bash
+ssh debian@<VM_IP> which uv
+ssh debian@<VM_IP> which go
+ssh debian@<VM_IP> which pre-commit
+ssh debian@<VM_IP> which poetry
+```
+
+Expected: All tools available in PATH
+
+### 3. Check Environment Variables (if GCP credentials configured)
+
+```bash
+ssh debian@<VM_IP> 'echo $GOOGLE_APPLICATION_CREDENTIALS'
+ssh debian@<VM_IP> 'echo $ANTHROPIC_VERTEX_PROJECT_ID'
+ssh debian@<VM_IP> 'echo $CLAUDE_CODE_USE_VERTEX'
+```
+
+Expected: Variables set to configured values
+
+### 4. Verify GCP Credentials File (if configured)
+
+```bash
+ssh debian@<VM_IP> cat /etc/google/application_default_credentials.json
+```
+
+Expected: Valid JSON service account key
+
+### 5. Test Claude Code Version
+
+```bash
+ssh debian@<VM_IP> claude-code --version
+```
+
+Expected: Version number displayed
+
+### 6. Test Python Tools
+
+```bash
+ssh debian@<VM_IP> pre-commit --version
+ssh debian@<VM_IP> poetry --version
+```
+
+Expected: Version numbers displayed
+
+### 7. Test Go Installation
+
+```bash
+ssh debian@<VM_IP> go version
+```
+
+Expected: go version go1.25.0 linux/amd64
+
 ## Update Testing
 
 ### 1. Add New SSH Key
@@ -245,3 +311,12 @@ Expected: `PermitRootLogin prohibit-password`
 - [ ] Adding SSH key updates VM
 - [ ] Terraform destroy completes
 - [ ] All resources cleaned up
+- [ ] claude-code installed and accessible
+- [ ] gemini-cli installed and accessible
+- [ ] github-copilot installed and accessible
+- [ ] uv available in PATH
+- [ ] go version 1.25.0 installed
+- [ ] pre-commit installed
+- [ ] poetry installed
+- [ ] Environment variables configured (if GCP creds provided)
+- [ ] GCP credentials file exists (if configured)
