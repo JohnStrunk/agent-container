@@ -1,0 +1,26 @@
+# Terraform state files
+*.tfstate
+*.tfstate.*
+
+# Terraform directory
+.terraform/
+.terraform.lock.hcl
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Variable files (may contain sensitive data)
+terraform.tfvars
+*.auto.tfvars
+
+# Crash log files
+crash.log
+
+# Exclude SSH private keys (only .pub files should be here)
+ssh-keys/*
+!ssh-keys/*.pub
+!ssh-keys/.gitkeep
+!ssh-keys/README.md
