@@ -12,3 +12,8 @@ ssh_keys_dir = "./ssh-keys"
 
 # Override Debian image URL if needed
 # debian_image_url = "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2"
+
+# GCP Vertex AI configuration (optional, for claude-code with Vertex AI)
+# gcp_service_account_key_path = "/path/to/service-account-key.json"
+# vertex_project_id = "your-gcp-project-id"
+# vertex_region = "us-central1"
