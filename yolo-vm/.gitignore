@@ -24,3 +24,7 @@ ssh-keys/*
 !ssh-keys/*.pub
 !ssh-keys/.gitkeep
 !ssh-keys/README.md
+
+# Service account JSON keys (but allow terraform state backups)
+*.json
+!terraform.tfstate*.json
