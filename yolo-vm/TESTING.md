@@ -1,0 +1,247 @@
+# Testing Guide for Debian VM Deployment
+
+This document describes how to test the VM deployment configuration.
+
+## Pre-Deployment Testing
+
+### 1. Validate Terraform Configuration
+
+```bash
+cd yolo-vm
+terraform init
+terraform validate
+```
+
+Expected output: `Success! The configuration is valid.`
+
+### 2. Check Terraform Formatting
+
+```bash
+terraform fmt -check
+```
+
+Expected: No output (all files properly formatted)
+
+### 3. Verify SSH Keys Present
+
+```bash
+ls -l ssh-keys/*.pub
+```
+
+Expected: At least one `.pub` file exists
+
+### 4. Review Terraform Plan
+
+```bash
+terraform plan
+```
+
+Expected: Shows resources to be created (no errors)
+
+## Deployment Testing
+
+### 1. Deploy VM
+
+```bash
+terraform apply
+```
+
+Expected: Successful creation of all resources
+
+### 2. Verify VM is Running
+
+```bash
+virsh list
+```
+
+Expected: VM shows as "running"
+
+### 3. Test Console Auto-Login
+
+```bash
+virsh console debian-trixie-vm
+# Press Enter
+```
+
+Expected: Root prompt without login prompt
+
+### 4. Verify Cloud-Init Completed
+
+In console:
+
+```bash
+cloud-init status
+```
+
+Expected: `status: done`
+
+### 5. Check Network Configuration
+
+In console:
+
+```bash
+ip addr show
+```
+
+Expected: Shows IP address on network interface
+
+## SSH Testing
+
+### 1. Get VM IP Address
+
+```bash
+terraform output vm_ip
+```
+
+### 2. Test SSH as Default User
+
+```bash
+ssh debian@<VM_IP>
+```
+
+Expected: Successful login without password
+
+### 3. Test SSH as Root
+
+```bash
+ssh root@<VM_IP>
+```
+
+Expected: Successful login without password
+
+### 4. Verify SSH Keys Installed
+
+On VM (via SSH):
+
+```bash
+cat ~/.ssh/authorized_keys
+```
+
+Expected: Shows keys from ssh-keys/ directory
+
+## Functional Testing
+
+### 1. Test Sudo Access (Default User)
+
+```bash
+ssh debian@<VM_IP> sudo whoami
+```
+
+Expected: `root`
+
+### 2. Test Package Installation
+
+```bash
+ssh root@<VM_IP> apt-get update
+ssh root@<VM_IP> apt-get install -y tree
+ssh root@<VM_IP> which tree
+```
+
+Expected: Shows path to tree binary
+
+### 3. Test Serial Console Login
+
+```bash
+virsh console debian-trixie-vm
+# Should auto-login as root
+whoami
+```
+
+Expected: `root`
+
+## Update Testing
+
+### 1. Add New SSH Key
+
+```bash
+ssh-keygen -t ed25519 -f test_key -N ""
+cp test_key.pub ssh-keys/test_key.pub
+terraform apply
+```
+
+Expected: VM updated with new key
+
+### 2. Verify New Key Works
+
+```bash
+ssh -i test_key root@<VM_IP>
+```
+
+Expected: Successful login
+
+### 3. Remove Test Key
+
+```bash
+rm ssh-keys/test_key.pub
+terraform apply
+```
+
+## Cleanup Testing
+
+### 1. Destroy VM
+
+```bash
+terraform destroy
+```
+
+Expected: All resources removed
+
+### 2. Verify VM Removed
+
+```bash
+virsh list --all | grep debian-trixie
+```
+
+Expected: No output (VM removed)
+
+### 3. Verify Volumes Removed
+
+```bash
+virsh vol-list default | grep debian-trixie
+```
+
+Expected: No output (volumes removed)
+
+## Troubleshooting Tests
+
+### Check Cloud-Init Logs
+
+```bash
+virsh console debian-trixie-vm
+journalctl -u cloud-init-local
+journalctl -u cloud-init
+journalctl -u cloud-final
+```
+
+### Check Serial Console Configuration
+
+```bash
+systemctl status serial-getty@ttyS0
+```
+
+### Check SSH Configuration
+
+```bash
+ssh root@<VM_IP> cat /etc/ssh/sshd_config | grep PermitRootLogin
+```
+
+Expected: `PermitRootLogin prohibit-password`
+
+## Automated Testing Checklist
+
+- [ ] Terraform validate passes
+- [ ] Terraform fmt check passes
+- [ ] At least one SSH key in ssh-keys/
+- [ ] Terraform plan shows no errors
+- [ ] Terraform apply succeeds
+- [ ] VM appears in virsh list
+- [ ] Console auto-login works
+- [ ] Cloud-init status shows done
+- [ ] VM has IP address
+- [ ] SSH as default user works
+- [ ] SSH as root works
+- [ ] Default user has sudo access
+- [ ] Package installation works
+- [ ] Adding SSH key updates VM
+- [ ] Terraform destroy completes
+- [ ] All resources cleaned up
