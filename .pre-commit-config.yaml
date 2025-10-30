@@ -99,6 +99,12 @@ repos:
     hooks:
       - id: shellcheck
 
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.96.2
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate
+
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
     hooks:
