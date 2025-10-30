@@ -44,18 +44,25 @@ runcmd:
   - |
     sed -i 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
   - systemctl restart sshd
-%{ if gcp_service_account_key != "" ~}
-  # Configure AI agent environment variables
+  # Create directory for GCP credentials (needed before write_files)
+  - mkdir -p /etc/google
+  # Configure Go PATH (unconditional - Go is always installed)
   - mkdir -p /etc/profile.d
   - |
-    cat > /etc/profile.d/ai-agent.sh <<EOF
+    cat > /etc/profile.d/go-path.sh <<EOF
+    export PATH="/usr/local/go/bin:\$PATH"
+    EOF
+  - chmod 644 /etc/profile.d/go-path.sh
+%{ if gcp_service_account_key != "" ~}
+  # Configure GCP environment variables for AI agents
+  - |
+    cat > /etc/profile.d/gcp-ai-agent.sh <<EOF
     export GOOGLE_APPLICATION_CREDENTIALS=/etc/google/application_default_credentials.json
     export ANTHROPIC_VERTEX_PROJECT_ID="${vertex_project_id}"
     export CLOUD_ML_REGION="${vertex_region}"
     export CLAUDE_CODE_USE_VERTEX="true"
-    export PATH="/usr/local/go/bin:\$PATH"
     EOF
-  - chmod 644 /etc/profile.d/ai-agent.sh
+  - chmod 644 /etc/profile.d/gcp-ai-agent.sh
 %{ endif ~}
   # Install Go 1.25.0
   - curl -fsSL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz -o /tmp/go.tar.gz
