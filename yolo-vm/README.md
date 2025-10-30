@@ -107,6 +107,7 @@ The VM comes pre-installed with AI coding agents:
      --display-name="Claude Code Agent"
 
    PROJECT="YOUR_PROJECT_ID"
+   # Service account email format: <name>@<project>.iam.gserviceaccount.com
    SA="claude-code-agent@${PROJECT}.iam.gserviceaccount.com"
 
    gcloud projects add-iam-policy-binding ${PROJECT} \
@@ -121,7 +122,7 @@ The VM comes pre-installed with AI coding agents:
 2. Update `terraform.tfvars`:
 
    ```hcl
-   gcp_service_account_key_path = "/home/user/claude-code-sa-key.json"
+   gcp_service_account_key_path = "~/claude-code-sa-key.json"
    vertex_project_id = "your-gcp-project-id"
    vertex_region = "us-central1"
    ```
