@@ -36,15 +36,41 @@ runcmd:
   - |
     sed -i 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
   - systemctl restart sshd
+  # Install Go 1.25.0
+  - curl -fsSL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz -o /tmp/go.tar.gz
+  - tar -C /usr/local -xzf /tmp/go.tar.gz
+  - rm -f /tmp/go.tar.gz
+  # Install uv for Python package management
+  - curl -LsSf https://astral.sh/uv/install.sh | sh
+  - mv /root/.local/bin/uv /usr/local/bin/uv
+  - mv /root/.local/bin/uvx /usr/local/bin/uvx
+  # Install Python tools system-wide
+  - uv pip install --system pre-commit poetry pipenv 'dvc[all]'
+  # Install AI coding agents globally
+  - npm install -g @anthropic-ai/claude-code@latest
+  - npm install -g @google/gemini-cli@latest
+  - npm install -g @github/copilot@latest
 
 package_update: true
 package_upgrade: true
 
 packages:
+  # Base utilities
   - vim
   - curl
   - wget
   - git
   - htop
+  # Agent environment packages
+  - nodejs
+  - npm
+  - python3
+  - python3-pip
+  - docker.io
+  - jq
+  - ripgrep
+  - gosu
+  - ca-certificates
+  - unzip
 
 final_message: "System boot complete. Console auto-login enabled for root."
