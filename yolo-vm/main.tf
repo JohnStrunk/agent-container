@@ -5,6 +5,10 @@ terraform {
       source  = "dmacvicar/libvirt"
       version = "~> 0.8.0"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -95,5 +99,32 @@ resource "libvirt_domain" "debian_vm" {
     type        = "spice"
     listen_type = "address"
     autoport    = true
+  }
+}
+
+# Wait for cloud-init to complete
+resource "null_resource" "wait_for_cloud_init" {
+  depends_on = [libvirt_domain.debian_vm]
+
+  provisioner "remote-exec" {
+    inline = [
+      # Wait for cloud-init to finish (quietly)
+      "cloud-init status --wait > /dev/null",
+      # Print the final status
+      "cloud-init status --long"
+    ]
+
+    connection {
+      type    = "ssh"
+      user    = "root"
+      host    = libvirt_domain.debian_vm.network_interface[0].addresses[0]
+      agent   = true
+      timeout = "10m"
+    }
+  }
+
+  # Force re-run if VM is recreated
+  triggers = {
+    vm_id = libvirt_domain.debian_vm.id
   }
 }

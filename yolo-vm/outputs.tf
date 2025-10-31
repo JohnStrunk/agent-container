@@ -31,3 +31,9 @@ output "console_command" {
   description = "Command to access VM console (auto-login as root)"
   value       = "virsh console ${libvirt_domain.debian_vm.name}"
 }
+
+output "cloud_init_complete" {
+  description = "Indicates whether cloud-init has completed"
+  value       = null_resource.wait_for_cloud_init.id != "" ? "Cloud-init completed successfully" : "Waiting for cloud-init..."
+  depends_on  = [null_resource.wait_for_cloud_init]
+}
