@@ -23,6 +23,14 @@ locals {
   gcp_service_account_key = var.gcp_service_account_key_path != "" ? file(var.gcp_service_account_key_path) : ""
 }
 
+# Create default NAT network
+resource "libvirt_network" "default" {
+  name      = "default"
+  mode      = "nat"
+  addresses = ["192.168.122.0/24"]
+  autostart = true
+}
+
 # Download Debian cloud image
 resource "libvirt_volume" "debian_base" {
   name   = "debian-13-base.qcow2"
@@ -67,7 +75,7 @@ resource "libvirt_domain" "debian_vm" {
   }
 
   network_interface {
-    network_name   = "default"
+    network_id     = libvirt_network.default.id
     wait_for_lease = true
   }
 
