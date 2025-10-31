@@ -47,7 +47,7 @@ RUN sed -i 's/^UID_MIN.*/UID_MIN 1000/' /etc/login.defs && \
     sed -i 's/^UID_MAX.*/UID_MAX 200000/' /etc/login.defs
 
 # Install uv and uvx from the official Astral image
-COPY --from=ghcr.io/astral-sh/uv:latest@sha256:4b96ee9429583983fd172c33a02ecac5242d63fb46bc27804748e38c1cc9ad0d /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:latest@sha256:ba4857bf2a068e9bc0e64eed8563b065908a4cd6bfb66b531a9c424c8e25e142 /uv /uvx /bin/
 
 # Install Python tools globally during build to avoid runtime delay
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
