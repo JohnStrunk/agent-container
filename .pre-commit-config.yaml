@@ -110,8 +110,8 @@ repos:
     hooks:
       # Prevent secrets from being committed
       - id: detect-secrets
-      #  args: ['--baseline', '.secrets.baseline']
-      #  exclude: package.lock.json
+        args: ['--baseline', '.secrets.baseline']
+        #  exclude: package.lock.json
 
   - repo: https://gitlab.com/bmares/check-json5
     rev: "v1.0.0"

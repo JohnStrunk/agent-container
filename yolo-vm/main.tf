@@ -16,15 +16,22 @@ provider "libvirt" {
   uri = "qemu:///system"
 }
 
-# Read all SSH public keys from directory
 locals {
+  # Read all SSH public keys from directory
   ssh_key_files = fileset(var.ssh_keys_dir, "*.pub")
   ssh_keys = [
     for f in local.ssh_key_files :
     trimspace(file("${var.ssh_keys_dir}/${f}"))
   ]
+
   # Read GCP service account key if path is provided
   gcp_service_account_key = var.gcp_service_account_key_path != "" ? file(var.gcp_service_account_key_path) : ""
+
+  # Read .claude.json configuration file
+  claude_config = file("${path.module}/files/.claude.json")
+
+  # Read start-claude script
+  start_claude_script = file("${path.module}/files/start-claude")
 }
 
 # Create default NAT network
@@ -63,6 +70,8 @@ resource "libvirt_cloudinit_disk" "cloud_init" {
     gcp_service_account_key = local.gcp_service_account_key
     vertex_project_id       = var.vertex_project_id
     vertex_region           = var.vertex_region
+    claude_config           = local.claude_config
+    start_claude_script     = local.start_claude_script
   })
 }
 
