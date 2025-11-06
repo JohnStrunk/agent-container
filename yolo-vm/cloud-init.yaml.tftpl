@@ -10,14 +10,12 @@ write_files:
     content: |
       ${indent(6, gcp_service_account_key)}
 %{ endif ~}
-  - path: /tmp/.claude.json
-    permissions: '0644'
+%{ for path, file_data in homedir_files ~}
+  - path: /tmp/homedir/${path}
+    permissions: '${file_data.permissions}'
     content: |
-      ${indent(6, claude_config)}
-  - path: /tmp/start-claude
-    permissions: '0755'
-    content: |
-      ${indent(6, start_claude_script)}
+      ${indent(6, file_data.content)}
+%{ endfor ~}
 
 users:
   - name: ${default_user}
@@ -85,15 +83,15 @@ runcmd:
   - npm install -g @google/gemini-cli@latest
   - npm install -g @github/copilot@latest
 
-  # Create workspace directory and copy claude config for default user
+  # Copy all files from /tmp/homedir to user's home directory
+  - cp -r /tmp/homedir/. /home/${default_user}/
+  - chown -R ${default_user}:${default_user} /home/${default_user}
+  - rm -rf /tmp/homedir
+
+  # Create workspace directory for Claude Code
   - mkdir -p /home/${default_user}/workspace
   - chown -R ${default_user}:${default_user} /home/${default_user}/workspace
   - chmod 755 /home/${default_user}/workspace
-  - mv /tmp/.claude.json /home/${default_user}/.claude.json
-  - chown ${default_user}:${default_user} /home/${default_user}/.claude.json
-  - mv /tmp/start-claude /home/${default_user}/start-claude
-  - chown ${default_user}:${default_user} /home/${default_user}/start-claude
-  - chmod 755 /home/${default_user}/start-claude
 
 
 package_update: true

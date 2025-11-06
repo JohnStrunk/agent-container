@@ -27,11 +27,15 @@ locals {
   # Read GCP service account key if path is provided
   gcp_service_account_key = var.gcp_service_account_key_path != "" ? file(var.gcp_service_account_key_path) : ""
 
-  # Read .claude.json configuration file
-  claude_config = file("${path.module}/files/.claude.json")
-
-  # Read start-claude script
-  start_claude_script = file("${path.module}/files/start-claude")
+  # Read all files from homedir recursively and create a map
+  # The map key is the relative path within homedir, value is file content
+  homedir_files = {
+    for f in fileset("${path.module}/files/homedir", "**") :
+    f => {
+      content     = file("${path.module}/files/homedir/${f}")
+      permissions = can(regex("^[^.]*$", basename(f))) && !can(regex("\\.", basename(f))) ? "0755" : "0644"
+    }
+  }
 }
 
 # Create default NAT network
@@ -70,8 +74,7 @@ resource "libvirt_cloudinit_disk" "cloud_init" {
     gcp_service_account_key = local.gcp_service_account_key
     vertex_project_id       = var.vertex_project_id
     vertex_region           = var.vertex_region
-    claude_config           = local.claude_config
-    start_claude_script     = local.start_claude_script
+    homedir_files           = local.homedir_files
   })
 }
 
