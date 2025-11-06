@@ -42,8 +42,17 @@ locals {
 resource "libvirt_network" "default" {
   name      = "default"
   mode      = "nat"
+  domain    = "vm.local"
   addresses = ["192.168.122.0/24"]
   autostart = true
+
+  dns {
+    enabled = true
+  }
+
+  dhcp {
+    enabled = true
+  }
 }
 
 # Download Debian cloud image
