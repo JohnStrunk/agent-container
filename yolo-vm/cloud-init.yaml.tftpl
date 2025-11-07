@@ -1,0 +1,120 @@
+#cloud-config
+hostname: ${hostname}
+fqdn: ${hostname}.local
+manage_etc_hosts: true
+
+write_files:
+%{ if gcp_service_account_key != "" ~}
+  - path: /etc/google/application_default_credentials.json
+    permissions: '0644'
+    content: |
+      ${indent(6, gcp_service_account_key)}
+%{ endif ~}
+%{ for path, file_data in homedir_files ~}
+  - path: /tmp/homedir/${path}
+    permissions: '${file_data.permissions}'
+    content: |
+      ${indent(6, file_data.content)}
+%{ endfor ~}
+
+users:
+  - name: ${default_user}
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+%{ for key in ssh_keys ~}
+      - ${key}
+%{ endfor ~}
+  - name: root
+    ssh_authorized_keys:
+%{ for key in ssh_keys ~}
+      - ${key}
+%{ endfor ~}
+
+# Enable root login via SSH
+ssh_pwauth: false
+disable_root: false
+
+# Configure serial console auto-login as root
+runcmd:
+  - mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
+  - |
+    cat > /etc/systemd/system/serial-getty@ttyS0.service.d/override.conf <<EOF
+    [Service]
+    ExecStart=
+    ExecStart=-/sbin/agetty --autologin root --noclear %I \$TERM
+    EOF
+  - systemctl daemon-reload
+  - systemctl restart serial-getty@ttyS0.service
+  - |
+    sed -i 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+  - systemctl restart sshd
+  # Configure Go PATH (unconditional - Go is always installed)
+  - mkdir -p /etc/profile.d
+  - |
+    cat > /etc/profile.d/go-path.sh <<EOF
+    export PATH="/usr/local/go/bin:\$PATH"
+    EOF
+  - chmod 644 /etc/profile.d/go-path.sh
+%{ if gcp_service_account_key != "" ~}
+  # Configure GCP environment variables for AI agents
+  - |
+    cat > /etc/profile.d/gcp-ai-agent.sh <<EOF
+    export GOOGLE_APPLICATION_CREDENTIALS=/etc/google/application_default_credentials.json
+    export ANTHROPIC_VERTEX_PROJECT_ID="${vertex_project_id}"
+    export CLOUD_ML_REGION="${vertex_region}"
+    export CLAUDE_CODE_USE_VERTEX="true"
+    EOF
+  - chmod 644 /etc/profile.d/gcp-ai-agent.sh
+%{ endif ~}
+  # Install Go 1.25.0
+  - curl -fsSL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz -o /tmp/go.tar.gz
+  - tar -C /usr/local -xzf /tmp/go.tar.gz
+  - rm -f /tmp/go.tar.gz
+  # Install uv for Python package management
+  - curl -LsSf https://astral.sh/uv/install.sh | sh
+  - mv /root/.local/bin/uv /usr/local/bin/uv
+  - mv /root/.local/bin/uvx /usr/local/bin/uvx
+  # Install Python tools system-wide
+  - uv pip install --system pre-commit poetry pipenv 'dvc[all]'
+  # Install AI coding agents globally
+  - npm install -g @anthropic-ai/claude-code@latest
+  - npm install -g @google/gemini-cli@latest
+  - npm install -g @github/copilot@latest
+
+  # Copy all files from /tmp/homedir to user's home directory
+  - cp -r /tmp/homedir/. /home/${default_user}/
+  - chown -R ${default_user}:${default_user} /home/${default_user}
+  - rm -rf /tmp/homedir
+
+  # Create workspace directory for Claude Code
+  - mkdir -p /home/${default_user}/workspace
+  - chown -R ${default_user}:${default_user} /home/${default_user}/workspace
+  - chmod 755 /home/${default_user}/workspace
+
+
+package_update: true
+package_upgrade: true
+
+packages:
+  # Base utilities
+  - vim
+  - curl
+  - wget
+  - git
+  - htop
+  # Agent environment packages
+  - nodejs
+  - npm
+  - python3
+  - python3-pip
+  - docker.io
+  - jq
+  - yq
+  - ripgrep
+  - gosu
+  - ca-certificates
+  - unzip
+
+final_message: "System boot complete. Console auto-login enabled for root."
