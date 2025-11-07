@@ -1,75 +1,13 @@
 {
   "numStartups": 1,
-  "installMethod": "unknown",
   "autoUpdates": false,
   "firstStartTime": "2025-10-31T18:42:23.168Z",
-  "userID": "0562c8119852707c1787108b018717283517d61088052ce37dafe68caffb176e",
   "changelogLastFetched": 1761936149293,
   "hasCompletedOnboarding": true,
   "lastOnboardingVersion": "2.0.30",
-  "projects": {
-    "/home/debian/workspace": {
-      "allowedTools": [],
-      "mcpContextUris": [],
-      "mcpServers": {},
-      "enabledMcpjsonServers": [],
-      "disabledMcpjsonServers": [],
-      "hasTrustDialogAccepted": true,
-      "ignorePatterns": [],
-      "projectOnboardingSeenCount": 1,
-      "hasClaudeMdExternalIncludesApproved": false,
-      "hasClaudeMdExternalIncludesWarningShown": false,
-      "exampleFiles": [],
-      "lastCost": 0.001987,
-      "lastAPIDuration": 10565,
-      "lastToolDuration": 0,
-      "lastDuration": 9237,
-      "lastLinesAdded": 0,
-      "lastLinesRemoved": 0,
-      "lastTotalInputTokens": 0,
-      "lastTotalOutputTokens": 186,
-      "lastTotalCacheCreationInputTokens": 0,
-      "lastTotalCacheReadInputTokens": 0,
-      "lastTotalWebSearchRequests": 0,
-      "lastSessionId": "8a863f7d-e127-4a87-a896-11d06114ea17"
-    }
-  },
+  "projects": {},
   "hasOpusPlanDefault": false,
   "bypassPermissionsModeAccepted": true,
   "lastReleaseNotesSeen": "2.0.30",
-  "mcpServers": {
-    "context7": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@upstash/context7-mcp"
-      ]
-    },
-    "docling": {
-      "command": "uvx",
-      "args": [
-        "--from=docling-mcp",
-        "docling-mcp-server",
-        "--transport=stdio"
-      ],
-      "type": "stdio"
-    },
-    "playwright": {
-      "command": "npx",
-      "args": [
-        "@playwright/mcp@latest",
-        "--headless",
-        "--isolated"
-      ],
-      "type": "stdio"
-    },
-    "sequential-thinking": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-sequential-thinking"
-      ]
-    }
-  }
+  "mcpServers": {}
 }
