@@ -21,6 +21,8 @@ This directory contains Terraform configuration to deploy a Debian 13
 - Terraform >= 1.0
 - Access to qemu:///system libvirt URI
 - Network connectivity to download Debian cloud images
+- **Multi-interface hosts**: Run `./libvirt-nat-fix.sh` after each host
+  reboot (see Troubleshooting)
 
 ### Install Prerequisites (Debian/Ubuntu)
 
@@ -260,6 +262,40 @@ virsh domiflist debian-trixie-vm
 3. Verify SSH keys: `ls ssh-keys/*.pub`
 4. Check cloud-init logs: `virsh console debian-trixie-vm` then
    `journalctl -u cloud-init`
+
+### VM Cannot Reach Internet (Multi-Interface Hosts)
+
+**Problem**: VMs can ping gateway (192.168.122.1) but cannot reach
+internet. Common on hosts with multiple network interfaces (eth0,
+eth1, wlan0, etc).
+
+**Root Cause**: libvirt creates iptables FORWARD rules for only one
+interface (typically eth0), but traffic may route through a different
+interface (e.g., eth1 with lower metric).
+
+**Solution**: Run the NAT fix script after each host reboot:
+
+```bash
+./libvirt-nat-fix.sh
+```
+
+This script adds FORWARD rules for all active external interfaces,
+allowing VM traffic to reach the internet regardless of which
+interface is used for the default route.
+
+**Verify Fix**:
+
+```bash
+# From host
+./libvirt-nat-fix.sh
+
+# From VM (after terraform apply)
+ssh root@<VM_IP> ping -c 3 8.8.8.8
+```
+
+**Permanent Solution**: Add the script to your system startup (e.g.,
+as a systemd service) or run it manually after each reboot and before
+`terraform apply`.
 
 ## Architecture
 

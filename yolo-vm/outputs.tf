@@ -11,6 +11,11 @@ output "vm_ip" {
   )
 }
 
+output "default_user" {
+  description = "Username of the default user"
+  value       = var.default_user
+}
+
 output "ssh_command_default_user" {
   description = "SSH command to connect as default user"
   value = try(

@@ -1,0 +1,31 @@
+[commit]
+	verbose = true
+[core]
+	autocrlf = input
+[diff]
+	submodule = log
+[fetch]
+	prune = true
+	# pruneTags = true
+[gpg]
+	program = /usr/bin/gpg2
+[init]
+	defaultBranch = main
+[merge]
+	ff = only
+	renamelimit = 99999
+[pull]
+	ff = only
+[push]
+	autoSetupRemote = true  # For new local branches, push to origin/branch
+	recurseSubmodules = check
+[status]
+	submoduleSummary = true
+[submodule]
+	recurse = true
+[tag]
+[transfer]
+	fsckobjects = true
+[user]
+	name = Claude Code
+	email = "noreply@anthropic.com"
