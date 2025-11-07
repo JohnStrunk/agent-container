@@ -1,0 +1,108 @@
+#!/bin/bash
+set -e -o pipefail
+
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source common functions
+# shellcheck source=vm-common.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/vm-common.sh"
+
+# Usage information
+usage() {
+  cat << EOF
+Usage: $0 <branch-name> [workspace-subpath]
+
+Fetch a git branch from VM workspace over SSH.
+
+Arguments:
+  branch-name         Git branch to fetch (required)
+  workspace-subpath   Optional subdirectory within workspace (default: root)
+
+Examples:
+  $0 feature-auth              # Fetch from /home/debian/workspace/
+  $0 feature-auth myapp        # Fetch from /home/debian/workspace/myapp/
+  $0 bugfix-123 path/to/repo   # Fetch from /home/debian/workspace/path/to/repo/
+
+Notes:
+  - Must be run from within a git repository
+  - Fetches commits from VM and updates local branch
+  - Uses temporary git remote that is cleaned up after fetch
+  - After fetch, checkout the branch and review changes
+EOF
+}
+
+# Parse arguments
+if [[ $# -lt 1 ]]; then
+  usage
+  exit 1
+fi
+
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+BRANCH_NAME="$1"
+WORKSPACE_SUBPATH="${2:-}"
+
+# Verify we're in a git repository
+if ! git rev-parse --git-dir > /dev/null 2>&1; then
+  echo "Error: Must run from within a git repository" >&2
+  exit 3
+fi
+
+# Get VM IP
+VM_IP=$(get_vm_ip "$SCRIPT_DIR")
+
+# Check VM reachable
+check_vm_reachable "$VM_IP"
+
+# Construct remote path
+if [[ -z "$WORKSPACE_SUBPATH" ]]; then
+  REMOTE_PATH="/home/debian/workspace"
+else
+  REMOTE_PATH="/home/debian/workspace/$WORKSPACE_SUBPATH"
+fi
+
+# Verify remote repository exists
+# shellcheck disable=SC2029
+if ! ssh "debian@$VM_IP" "test -d $REMOTE_PATH/.git"; then
+  echo "Error: Git repository not found at $REMOTE_PATH on VM" >&2
+  echo "Did you push with vm-git-push first?" >&2
+  exit 1
+fi
+
+# Verify branch exists on VM
+# shellcheck disable=SC2029
+if ! ssh "debian@$VM_IP" \
+     "cd $REMOTE_PATH && git rev-parse --verify $BRANCH_NAME > /dev/null 2>&1"; then
+  echo "Error: Branch '$BRANCH_NAME' not found on VM" >&2
+  exit 3
+fi
+
+# Add temporary remote
+REMOTE_NAME="vm-workspace-$$"
+git remote add "$REMOTE_NAME" "ssh://debian@$VM_IP$REMOTE_PATH/.git"
+
+# Ensure cleanup happens
+cleanup() {
+  git remote remove "$REMOTE_NAME" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# Fetch branch from VM
+echo "Fetching branch '$BRANCH_NAME' from VM..."
+git fetch "$REMOTE_NAME" "$BRANCH_NAME:$BRANCH_NAME"
+
+echo "Done! Branch '$BRANCH_NAME' fetched successfully."
+echo ""
+echo "To review changes:"
+echo "  git checkout $BRANCH_NAME"
+echo "  git log --oneline -10"
+echo "  git diff main..$BRANCH_NAME"
+echo ""
+echo "To merge when ready:"
+echo "  git checkout main"
+echo "  git merge $BRANCH_NAME"
