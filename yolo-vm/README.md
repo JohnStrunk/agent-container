@@ -160,6 +160,98 @@ All agents have access to:
 - **Development Tools**: git, docker, jq, ripgrep
 - **Python Tools**: pre-commit, dvc
 
+## Syncing Files with VM Workspace
+
+Four helper scripts enable syncing files and git repositories between the
+host and VM workspace:
+
+### Directory Sync
+
+**Push directory to VM:**
+
+```bash
+./vm-dir-push <local-directory> [workspace-subpath]
+
+# Examples:
+./vm-dir-push ./my-project              # → /home/debian/workspace/
+./vm-dir-push ./my-project myapp        # → /home/debian/workspace/myapp/
+```
+
+**Pull directory from VM:**
+
+```bash
+./vm-dir-pull <local-directory> [workspace-subpath]
+
+# Examples:
+./vm-dir-pull ./my-project              # ← /home/debian/workspace/
+./vm-dir-pull ./my-project myapp        # ← /home/debian/workspace/myapp/
+```
+
+### Git Repository Sync
+
+**Push git branch to VM:**
+
+```bash
+./vm-git-push <branch-name> [workspace-subpath]
+
+# Examples:
+./vm-git-push feature-auth              # → /home/debian/workspace/
+./vm-git-push feature-auth myapp        # → /home/debian/workspace/myapp/
+```
+
+**Fetch git branch from VM:**
+
+```bash
+./vm-git-fetch <branch-name> [workspace-subpath]
+
+# Examples:
+./vm-git-fetch feature-auth             # ← /home/debian/workspace/
+./vm-git-fetch feature-auth myapp       # ← /home/debian/workspace/myapp/
+
+# Then review and merge
+git checkout feature-auth
+git log
+git checkout main
+git merge feature-auth
+```
+
+### Typical Workflow
+
+**For git repositories:**
+
+```bash
+# 1. Push your branch to VM
+./vm-git-push feature-branch
+
+# 2. SSH into VM and work with AI agent
+./vm-connect.sh
+claude-code  # Work on the feature
+
+# 3. Back on host, fetch the changes
+./vm-git-fetch feature-branch
+
+# 4. Review and merge
+git checkout feature-branch
+git log
+git checkout main
+git merge feature-branch
+```
+
+**For simple directories:**
+
+```bash
+# 1. Push directory to VM
+./vm-dir-push ./my-project
+
+# 2. SSH into VM and work
+./vm-connect.sh
+cd ~/workspace/my-project
+# Make changes...
+
+# 3. Pull changes back
+./vm-dir-pull ./my-project
+```
+
 ## Configuration
 
 ### Customize VM Settings
