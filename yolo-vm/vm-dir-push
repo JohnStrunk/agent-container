@@ -1,0 +1,90 @@
+#!/bin/bash
+set -e -o pipefail
+
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source common functions
+# shellcheck source=vm-common.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/vm-common.sh"
+
+# Usage information
+usage() {
+  cat << EOF
+Usage: $0 <local-directory> [workspace-subpath]
+
+Push directory contents to VM workspace over SSH using rsync.
+
+Arguments:
+  local-directory     Local directory to push (required)
+  workspace-subpath   Optional subdirectory within workspace (default: root)
+
+Examples:
+  $0 ./my-project              # Push to /home/debian/workspace/
+  $0 ./my-project myapp        # Push to /home/debian/workspace/myapp/
+  $0 ~/src/foo bar/baz         # Push to /home/debian/workspace/bar/baz/
+
+Notes:
+  - Directory contents (not the directory itself) are copied
+  - Excludes: .git/, node_modules/, __pycache__/, .venv/, venv/
+  - Uses rsync for efficient incremental transfers
+EOF
+}
+
+# Parse arguments
+if [[ $# -lt 1 ]]; then
+  usage
+  exit 1
+fi
+
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+LOCAL_DIR="$1"
+WORKSPACE_SUBPATH="${2:-}"
+
+# Validate local directory exists
+if [[ ! -d "$LOCAL_DIR" ]]; then
+  echo "Error: Local directory '$LOCAL_DIR' does not exist" >&2
+  exit 1
+fi
+
+# Get absolute path
+LOCAL_DIR=$(get_absolute_path "$LOCAL_DIR")
+
+# Get VM IP
+VM_IP=$(get_vm_ip "$SCRIPT_DIR")
+
+# Check VM reachable
+check_vm_reachable "$VM_IP"
+
+# Construct remote path
+if [[ -z "$WORKSPACE_SUBPATH" ]]; then
+  REMOTE_PATH="/home/debian/workspace/"
+else
+  REMOTE_PATH="/home/debian/workspace/$WORKSPACE_SUBPATH/"
+fi
+
+# Create remote directory if it doesn't exist
+# shellcheck disable=SC2029
+ssh "debian@$VM_IP" "mkdir -p \"$REMOTE_PATH\""
+
+# Perform rsync
+echo "Pushing $LOCAL_DIR to debian@$VM_IP:$REMOTE_PATH"
+
+rsync -avz --progress \
+  --exclude='.git/' \
+  --exclude='node_modules/' \
+  --exclude='__pycache__/' \
+  --exclude='.venv/' \
+  --exclude='venv/' \
+  --exclude='.pytest_cache/' \
+  --exclude='*.pyc' \
+  --exclude='.DS_Store' \
+  "$LOCAL_DIR/" \
+  "debian@$VM_IP:$REMOTE_PATH"
+
+echo "Done! Directory pushed successfully."
