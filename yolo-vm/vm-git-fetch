@@ -68,7 +68,7 @@ fi
 
 # Verify remote repository exists
 # shellcheck disable=SC2029
-if ! ssh "debian@$VM_IP" "test -d $REMOTE_PATH/.git"; then
+if ! ssh "debian@$VM_IP" "test -d \"$REMOTE_PATH\"/.git"; then
   echo "Error: Git repository not found at $REMOTE_PATH on VM" >&2
   echo "Did you push with vm-git-push first?" >&2
   exit 1
@@ -77,7 +77,7 @@ fi
 # Verify branch exists on VM
 # shellcheck disable=SC2029
 if ! ssh "debian@$VM_IP" \
-     "cd $REMOTE_PATH && git rev-parse --verify $BRANCH_NAME > /dev/null 2>&1"; then
+     "cd \"$REMOTE_PATH\" && git rev-parse --verify \"$BRANCH_NAME\" > /dev/null 2>&1"; then
   echo "Error: Branch '$BRANCH_NAME' not found on VM" >&2
   exit 3
 fi
