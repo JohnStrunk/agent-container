@@ -19,9 +19,8 @@ write_files:
 
 users:
   - name: ${default_user}
-    groups: sudo
+    uid: ${user_uid}
     shell: /bin/bash
-    sudo: ALL=(ALL) NOPASSWD:ALL
     ssh_authorized_keys:
 %{ for key in ssh_keys ~}
       - ${key}
@@ -38,6 +37,11 @@ disable_root: false
 
 # Configure serial console auto-login as root
 runcmd:
+  # Fix user's primary group to match host GID
+  - groupmod -g ${user_gid} ${default_user}
+  - usermod -g ${user_gid} ${default_user}
+  # Add user to docker group for container access
+  - usermod -aG docker ${default_user}
   - mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
   - |
     cat > /etc/systemd/system/serial-getty@ttyS0.service.d/override.conf <<EOF
@@ -85,12 +89,12 @@ runcmd:
 
   # Copy all files from /tmp/homedir to user's home directory
   - cp -r /tmp/homedir/. /home/${default_user}/
-  - chown -R ${default_user}:${default_user} /home/${default_user}
+  - chown -R ${user_uid}:${user_gid} /home/${default_user}
   - rm -rf /tmp/homedir
 
   # Create workspace directory for Claude Code
   - mkdir -p /home/${default_user}/workspace
-  - chown -R ${default_user}:${default_user} /home/${default_user}/workspace
+  - chown -R ${user_uid}:${user_gid} /home/${default_user}/workspace
   - chmod 755 /home/${default_user}/workspace
 
 

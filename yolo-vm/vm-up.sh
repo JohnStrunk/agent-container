@@ -5,4 +5,10 @@ set -e -o pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-terraform apply --auto-approve
+# Get current user's UID and GID to match permissions with host
+USER_UID=$(id -u)
+USER_GID=$(id -g)
+
+terraform apply --auto-approve \
+  -var="user_uid=$USER_UID" \
+  -var="user_gid=$USER_GID"
