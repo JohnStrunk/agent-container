@@ -31,7 +31,19 @@ variable "vm_hostname" {
 variable "default_user" {
   description = "Default non-root user to create"
   type        = string
-  default     = "debian"
+  default     = "user"
+}
+
+variable "user_uid" {
+  description = "UID for the default user (should match host user)"
+  type        = number
+  default     = 1000
+}
+
+variable "user_gid" {
+  description = "GID for the default user (should match host user)"
+  type        = number
+  default     = 1000
 }
 
 variable "ssh_keys_dir" {

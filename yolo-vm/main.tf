@@ -79,6 +79,8 @@ resource "libvirt_cloudinit_disk" "cloud_init" {
   user_data = templatefile("${path.module}/cloud-init.yaml.tftpl", {
     hostname                = var.vm_hostname
     default_user            = var.default_user
+    user_uid                = var.user_uid
+    user_gid                = var.user_gid
     ssh_keys                = local.ssh_keys
     gcp_service_account_key = local.gcp_service_account_key
     vertex_project_id       = var.vertex_project_id
