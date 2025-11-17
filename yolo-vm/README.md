@@ -160,6 +160,37 @@ All agents have access to:
 - **Development Tools**: git, docker, jq, ripgrep
 - **Python Tools**: pre-commit, dvc
 
+## Helper Scripts
+
+### Connecting to the VM
+
+**Connect via SSH:**
+
+```bash
+./vm-connect.sh
+```
+
+This script automatically:
+
+- Ensures the VM is running (calls `vm-up.sh`)
+- Retrieves the VM IP from Terraform
+- Connects via SSH to the VM
+
+**Options:**
+
+- `-r, --root`: Connect as root instead of the default user
+
+**Examples:**
+
+```bash
+# Connect as default user
+./vm-connect.sh
+
+# Connect as root
+./vm-connect.sh -r
+./vm-connect.sh --root
+```
+
 ## Syncing Files with VM Workspace
 
 Four helper scripts enable syncing files and git repositories between the
