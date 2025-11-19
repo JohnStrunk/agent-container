@@ -21,9 +21,9 @@ Arguments:
   workspace-subpath   Optional subdirectory within workspace (default: root)
 
 Examples:
-  $0 feature-auth              # Fetch from /home/debian/workspace/
-  $0 feature-auth myapp        # Fetch from /home/debian/workspace/myapp/
-  $0 bugfix-123 path/to/repo   # Fetch from /home/debian/workspace/path/to/repo/
+  $0 feature-auth              # Fetch from workspace root
+  $0 feature-auth myapp        # Fetch from workspace/myapp/
+  $0 bugfix-123 path/to/repo   # Fetch from workspace/path/to/repo/
 
 Notes:
   - Must be run from within a git repository
@@ -53,22 +53,24 @@ if ! git rev-parse --git-dir > /dev/null 2>&1; then
   exit 3
 fi
 
-# Get VM IP
+# Get VM IP and user
 VM_IP=$(get_vm_ip "$SCRIPT_DIR")
+VM_USER=$(get_vm_user "$SCRIPT_DIR")
 
 # Check VM reachable
-check_vm_reachable "$VM_IP"
+check_vm_reachable "$VM_IP" "$VM_USER"
 
 # Construct remote path
+WORKSPACE_BASE=$(get_vm_workspace_path "$SCRIPT_DIR")
 if [[ -z "$WORKSPACE_SUBPATH" ]]; then
-  REMOTE_PATH="/home/debian/workspace"
+  REMOTE_PATH="$WORKSPACE_BASE"
 else
-  REMOTE_PATH="/home/debian/workspace/$WORKSPACE_SUBPATH"
+  REMOTE_PATH="$WORKSPACE_BASE/$WORKSPACE_SUBPATH"
 fi
 
 # Verify remote repository exists
 # shellcheck disable=SC2029
-if ! ssh "debian@$VM_IP" "test -d \"$REMOTE_PATH\"/.git"; then
+if ! ssh "$VM_USER@$VM_IP" "test -d \"$REMOTE_PATH\"/.git"; then
   echo "Error: Git repository not found at $REMOTE_PATH on VM" >&2
   echo "Did you push with vm-git-push first?" >&2
   exit 1
@@ -76,7 +78,7 @@ fi
 
 # Verify branch exists on VM
 # shellcheck disable=SC2029
-if ! ssh "debian@$VM_IP" \
+if ! ssh "$VM_USER@$VM_IP" \
      "cd \"$REMOTE_PATH\" && git rev-parse --verify \"$BRANCH_NAME\" > /dev/null 2>&1"; then
   echo "Error: Branch '$BRANCH_NAME' not found on VM" >&2
   exit 3
@@ -84,7 +86,7 @@ fi
 
 # Add temporary remote
 REMOTE_NAME="vm-workspace-$$"
-git remote add "$REMOTE_NAME" "ssh://debian@$VM_IP$REMOTE_PATH/.git"
+git remote add "$REMOTE_NAME" "ssh://$VM_USER@$VM_IP$REMOTE_PATH/.git"
 
 # Ensure cleanup happens
 cleanup() {

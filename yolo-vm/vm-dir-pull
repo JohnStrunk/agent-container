@@ -21,9 +21,9 @@ Arguments:
   workspace-subpath   Optional subdirectory within workspace (default: root)
 
 Examples:
-  $0 ./my-project              # Pull from /home/debian/workspace/
-  $0 ./my-project myapp        # Pull from /home/debian/workspace/myapp/
-  $0 ~/src/foo bar/baz         # Pull from /home/debian/workspace/bar/baz/
+  $0 ./my-project              # Pull from workspace root
+  $0 ./my-project myapp        # Pull from workspace/myapp/
+  $0 ~/src/foo bar/baz         # Pull from workspace/bar/baz/
 
 Notes:
   - Directory contents are mirrored (uses --delete)
@@ -52,31 +52,33 @@ mkdir -p "$LOCAL_DIR"
 # Get absolute path
 LOCAL_DIR=$(get_absolute_path "$LOCAL_DIR")
 
-# Get VM IP
+# Get VM IP and user
 VM_IP=$(get_vm_ip "$SCRIPT_DIR")
+VM_USER=$(get_vm_user "$SCRIPT_DIR")
 
 # Check VM reachable
-check_vm_reachable "$VM_IP"
+check_vm_reachable "$VM_IP" "$VM_USER"
 
 # Construct remote path
+WORKSPACE_BASE=$(get_vm_workspace_path "$SCRIPT_DIR")
 if [[ -z "$WORKSPACE_SUBPATH" ]]; then
-  REMOTE_PATH="/home/debian/workspace/"
+  REMOTE_PATH="$WORKSPACE_BASE/"
 else
-  REMOTE_PATH="/home/debian/workspace/$WORKSPACE_SUBPATH/"
+  REMOTE_PATH="$WORKSPACE_BASE/$WORKSPACE_SUBPATH/"
 fi
 
 # Check if remote path exists
 # shellcheck disable=SC2029
-if ! ssh "debian@$VM_IP" "test -d \"$REMOTE_PATH\""; then
+if ! ssh "$VM_USER@$VM_IP" "test -d \"$REMOTE_PATH\""; then
   echo "Error: Remote path '$REMOTE_PATH' does not exist on VM" >&2
   exit 1
 fi
 
 # Perform rsync
-echo "Pulling from debian@$VM_IP:$REMOTE_PATH to $LOCAL_DIR"
+echo "Pulling from $VM_USER@$VM_IP:$REMOTE_PATH to $LOCAL_DIR"
 
 rsync -avz --progress --delete \
-  "debian@$VM_IP:$REMOTE_PATH" \
+  "$VM_USER@$VM_IP:$REMOTE_PATH" \
   "$LOCAL_DIR/"
 
 echo "Done! Directory pulled successfully."
