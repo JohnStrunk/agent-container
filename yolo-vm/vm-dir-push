@@ -21,9 +21,9 @@ Arguments:
   workspace-subpath   Optional subdirectory within workspace (default: root)
 
 Examples:
-  $0 ./my-project              # Push to /home/debian/workspace/
-  $0 ./my-project myapp        # Push to /home/debian/workspace/myapp/
-  $0 ~/src/foo bar/baz         # Push to /home/debian/workspace/bar/baz/
+  $0 ./my-project              # Push to workspace root
+  $0 ./my-project myapp        # Push to workspace/myapp/
+  $0 ~/src/foo bar/baz         # Push to workspace/bar/baz/
 
 Notes:
   - Directory contents (not the directory itself) are copied
@@ -55,25 +55,27 @@ fi
 # Get absolute path
 LOCAL_DIR=$(get_absolute_path "$LOCAL_DIR")
 
-# Get VM IP
+# Get VM IP and user
 VM_IP=$(get_vm_ip "$SCRIPT_DIR")
+VM_USER=$(get_vm_user "$SCRIPT_DIR")
 
 # Check VM reachable
-check_vm_reachable "$VM_IP"
+check_vm_reachable "$VM_IP" "$VM_USER"
 
 # Construct remote path
+WORKSPACE_BASE=$(get_vm_workspace_path "$SCRIPT_DIR")
 if [[ -z "$WORKSPACE_SUBPATH" ]]; then
-  REMOTE_PATH="/home/debian/workspace/"
+  REMOTE_PATH="$WORKSPACE_BASE/"
 else
-  REMOTE_PATH="/home/debian/workspace/$WORKSPACE_SUBPATH/"
+  REMOTE_PATH="$WORKSPACE_BASE/$WORKSPACE_SUBPATH/"
 fi
 
 # Create remote directory if it doesn't exist
 # shellcheck disable=SC2029
-ssh "debian@$VM_IP" "mkdir -p \"$REMOTE_PATH\""
+ssh "$VM_USER@$VM_IP" "mkdir -p \"$REMOTE_PATH\""
 
 # Perform rsync
-echo "Pushing $LOCAL_DIR to debian@$VM_IP:$REMOTE_PATH"
+echo "Pushing $LOCAL_DIR to $VM_USER@$VM_IP:$REMOTE_PATH"
 
 rsync -avz --progress \
   --exclude='.git/' \
@@ -85,6 +87,6 @@ rsync -avz --progress \
   --exclude='*.pyc' \
   --exclude='.DS_Store' \
   "$LOCAL_DIR/" \
-  "debian@$VM_IP:$REMOTE_PATH"
+  "$VM_USER@$VM_IP:$REMOTE_PATH"
 
 echo "Done! Directory pushed successfully."
