@@ -96,15 +96,29 @@ trap cleanup EXIT
 
 # Fetch branch from VM
 echo "Fetching branch '$BRANCH_NAME' from VM..."
-git fetch "$REMOTE_NAME" "$BRANCH_NAME:$BRANCH_NAME"
 
-echo "Done! Branch '$BRANCH_NAME' fetched successfully."
-echo ""
-echo "To review changes:"
-echo "  git checkout $BRANCH_NAME"
-echo "  git log --oneline -10"
-echo "  git diff main..$BRANCH_NAME"
-echo ""
-echo "To merge when ready:"
-echo "  git checkout main"
-echo "  git merge $BRANCH_NAME"
+# Get current branch
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+# Check if target branch is currently checked out
+if [[ "$CURRENT_BRANCH" == "$BRANCH_NAME" ]]; then
+  # Branch is checked out - pull it directly
+  echo "Note: Branch '$BRANCH_NAME' is currently checked out"
+  git pull "$REMOTE_NAME" "$BRANCH_NAME"
+
+  echo "Done! Branch '$BRANCH_NAME' pulled successfully."
+else
+  # Branch is not checked out - can update directly
+  git fetch "$REMOTE_NAME" "$BRANCH_NAME:$BRANCH_NAME"
+
+  echo "Done! Branch '$BRANCH_NAME' fetched successfully."
+  echo ""
+  echo "To review changes:"
+  echo "  git checkout $BRANCH_NAME"
+  echo "  git log --oneline -10"
+  echo "  git diff main..$BRANCH_NAME"
+  echo ""
+  echo "To merge when ready:"
+  echo "  git checkout main"
+  echo "  git merge $BRANCH_NAME"
+fi
