@@ -24,4 +24,5 @@ else
     claude plugin marketplace update
 fi
 
-exec claude --allow-dangerously-skip-permissions "$@"
+#exec claude --allow-dangerously-skip-permissions "$@"
+exec claude --dangerously-skip-permissions "$@"
