@@ -77,7 +77,7 @@ fi
 # Perform rsync
 echo "Pulling from $VM_USER@$VM_IP:$REMOTE_PATH to $LOCAL_DIR"
 
-rsync -avz --progress --delete \
+rsync -avz --delete \
   "$VM_USER@$VM_IP:$REMOTE_PATH" \
   "$LOCAL_DIR/"
 
