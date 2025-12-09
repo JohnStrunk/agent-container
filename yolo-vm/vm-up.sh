@@ -12,3 +12,6 @@ USER_GID=$(id -g)
 terraform apply --auto-approve \
   -var="user_uid=$USER_UID" \
   -var="user_gid=$USER_GID"
+
+VM_IP=$(terraform output -raw vm_ip)
+ssh-keygen -R "$VM_IP"

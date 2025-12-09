@@ -77,8 +77,7 @@ ssh "$VM_USER@$VM_IP" "mkdir -p \"$REMOTE_PATH\""
 # Perform rsync
 echo "Pushing $LOCAL_DIR to $VM_USER@$VM_IP:$REMOTE_PATH"
 
-rsync -avz --progress \
-  --exclude='.git/' \
+rsync -avz \
   --exclude='node_modules/' \
   --exclude='__pycache__/' \
   --exclude='.venv/' \
