@@ -2,3 +2,7 @@ Build test passed: Wed Dec 10 15:11:41 UTC 2025
 Credential injection mechanism verified: base64 encode/decode works
 Note: /etc/skel/ copy has permission issues (files have 600 perms)
 Credential injection test passed: Wed Dec 10 15:13:36 UTC 2025
+Config copying test (partial): Wed Dec 10 15:14:47 UTC 2025
+Files with proper permissions (.claude.json, .bashrc) copied successfully
+Files with 600 permissions (.gitconfig, .gitignore) cannot be read by non-root user
+Recommendation: Fix source file permissions or change copy mechanism
