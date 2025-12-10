@@ -6,3 +6,7 @@ Config copying test (partial): Wed Dec 10 15:14:47 UTC 2025
 Files with proper permissions (.claude.json, .bashrc) copied successfully
 Files with 600 permissions (.gitconfig, .gitignore) cannot be read by non-root user
 Recommendation: Fix source file permissions or change copy mechanism
+Cache volume test passed: Wed Dec 10 15:16:09 UTC 2025
+Tested cache volume mounting and persistence
+Verified data persists across container recreations
+Verified volume is shared across sessions
