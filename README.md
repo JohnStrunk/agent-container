@@ -99,12 +99,22 @@ copilot
 
 ### Configuration
 
-The container automatically mounts several directories for persistent configuration:
+The container uses built-in configurations from `files/homedir/`:
 
-- `~/.claude` - Claude Code configuration
-- `~/.gemini` - Gemini CLI configuration  
-- `~/.config/gcloud` - Google Cloud configuration
-- `~/.cache/pre-commit` - Pre-commit cache
+- `.claude.json` - Claude Code settings (model, preferences)
+- `.gitconfig` - Git configuration (name, email, aliases)
+- `start-claude` - Helper script
+
+**These are built into the container image and NOT shared with your host.**
+Changes you make inside the container are lost when it exits.
+
+To customize permanently:
+
+1. Edit files in `files/homedir/`
+2. Rebuild the image: `docker build -t ghcr.io/johnstrunk/agent-container .`
+3. Restart your container
+
+**Automatic mounts (OLD BEHAVIOR) have been removed.**
 
 ### Environment Variables
 
