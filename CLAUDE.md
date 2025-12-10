@@ -59,6 +59,9 @@ Pre-commit hooks are extensively configured for:
 - Docker (hadolint via pre-commit)
 - Python linting and formatting
 
+**Cache:** Pre-commit hooks are cached in Docker volume
+`agent-container-cache` for fast startup across sessions.
+
 ## Development Workflow
 
 ### Task Management
