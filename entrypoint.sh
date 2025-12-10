@@ -18,29 +18,6 @@ groupadd -g "$EGID" "$GROUPNAME" || true
 useradd -o -u "$EUID" -g "$EGID" -m -d "$HOMEDIR" "$USERNAME"
 chown "$USERNAME":"$GROUPNAME" "$HOMEDIR"
 
-# Ensure parent directories of mounted paths have correct permissions
-# Process CONTAINER_MOUNT_PATHS if provided by start-work script
-if [[ -n "$CONTAINER_MOUNT_PATHS" ]]; then
-    IFS=':' read -ra MOUNT_PATHS <<< "$CONTAINER_MOUNT_PATHS"
-    for mount_path in "${MOUNT_PATHS[@]}"; do
-        if [[ -n "$mount_path" && -e "$mount_path" ]]; then
-            # Fix ownership of the entire directory chain up to the mount point
-            current_dir="$(dirname "$mount_path")"
-            while [[ "$current_dir" != "/" && "$current_dir" != "." ]]; do
-                # Create directory if it doesn't exist
-                if [[ ! -d "$current_dir" ]]; then
-                    gosu "$USERNAME" mkdir -p "$current_dir"
-                fi
-                # Fix ownership, but skip system directories that should remain root-owned
-                if [[ "$current_dir" != "/home" && "$current_dir" != "/opt" && "$current_dir" != "/usr" && "$current_dir" != "/var" ]]; then
-                    chown "$USERNAME":"$GROUPNAME" "$current_dir"
-                fi
-                current_dir="$(dirname "$current_dir")"
-            done
-        fi
-    done
-fi
-
 # Ensure critical user directories exist and have correct ownership
 gosu "$USERNAME" mkdir -p "$HOMEDIR/.cache"
 gosu "$USERNAME" mkdir -p "$HOMEDIR/.config"
