@@ -195,8 +195,6 @@ docker run \
     -e CLOUD_ML_REGION \
     -e CLAUDE_CODE_USE_VERTEX \
     -e GEMINI_API_KEY \
-    -e GH_TOKEN \
-    -e GITHUB_TOKEN \
     ...
 ```
 
@@ -493,8 +491,6 @@ docker run --rm -it \
     -e ANTHROPIC_VERTEX_PROJECT_ID \
     -e CLOUD_ML_REGION \
     -e CLAUDE_CODE_USE_VERTEX \
-    -e GH_TOKEN \
-    -e GITHUB_TOKEN \
     ghcr.io/johnstrunk/agent-container:latest "${CONTAINER_COMMAND[@]}"
 ```
 
@@ -519,7 +515,6 @@ Arguments:
 Environment Variables:
   ANTHROPIC_API_KEY          Anthropic API key for Claude
   GEMINI_API_KEY             Google Gemini API key
-  GH_TOKEN/GITHUB_TOKEN      GitHub token for Copilot
   (See README.md for full list)
 
 Examples:

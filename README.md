@@ -135,12 +135,6 @@ Set these environment variables to authenticate with AI services:
 
 - `GEMINI_API_KEY` - API key for Gemini
 
-**GitHub Copilot CLI:**
-
-- `GH_TOKEN` or `GITHUB_TOKEN` - Personal Access Token with "Copilot
-  Requests" permission
-- Requires an active GitHub Copilot subscription
-
 **GCP Credential Injection:**
 
 For Vertex AI authentication, use credential file injection:
