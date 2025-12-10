@@ -169,8 +169,14 @@ The credential file is:
 ## File Structure
 
 - `Dockerfile` - Container image definition
-- `entrypoint.sh` - Container startup script with user setup
+- `entrypoint.sh` - Container startup script with user setup and credential
+  injection
+- `entrypoint_user.sh` - User-level initialization
 - `start-work` - Main script to create worktrees and start containers
+- `files/homedir/` - Built-in configuration files (copied to container)
+  - `.claude.json` - Claude Code settings
+  - `.gitconfig` - Git configuration
+  - `start-claude` - Helper script
 - `LICENSE` - MIT License
 
 ## Docker Image
