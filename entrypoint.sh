@@ -15,37 +15,14 @@ HOMEDIR="${HOME:-/home/$USERNAME}"
 # Ensure parent directories exist
 mkdir -p "$(dirname "$HOMEDIR")"
 groupadd -g "$EGID" "$GROUPNAME" || true
-useradd -o -u "$EUID" -g "$EGID" -m -d "$HOMEDIR" "$USERNAME"
+useradd -o -u "$EUID" -g "$EGID" -d "$HOMEDIR" "$USERNAME"
+mkdir -p "$HOMEDIR"
 chown "$USERNAME":"$GROUPNAME" "$HOMEDIR"
 
-# Give the user access to the Docker socket if it exists
-if [[ -S /var/run/docker.sock ]]; then
-    DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
-    groupadd -g "$DOCKER_GID" docker || true
-    usermod -aG docker "$USERNAME"
-fi
-
-# Ensure parent directories of mounted paths have correct permissions
-# Process CONTAINER_MOUNT_PATHS if provided by start-work script
-if [[ -n "$CONTAINER_MOUNT_PATHS" ]]; then
-    IFS=':' read -ra MOUNT_PATHS <<< "$CONTAINER_MOUNT_PATHS"
-    for mount_path in "${MOUNT_PATHS[@]}"; do
-        if [[ -n "$mount_path" && -e "$mount_path" ]]; then
-            # Fix ownership of the entire directory chain up to the mount point
-            current_dir="$(dirname "$mount_path")"
-            while [[ "$current_dir" != "/" && "$current_dir" != "." ]]; do
-                # Create directory if it doesn't exist
-                if [[ ! -d "$current_dir" ]]; then
-                    gosu "$USERNAME" mkdir -p "$current_dir"
-                fi
-                # Fix ownership, but skip system directories that should remain root-owned
-                if [[ "$current_dir" != "/home" && "$current_dir" != "/opt" && "$current_dir" != "/usr" && "$current_dir" != "/var" ]]; then
-                    chown "$USERNAME":"$GROUPNAME" "$current_dir"
-                fi
-                current_dir="$(dirname "$current_dir")"
-            done
-        fi
-    done
+# Manually copy /etc/skel/ contents to home directory
+# -n flag prevents overwriting existing files (handles pre-existing mounts)
+if [[ -d /etc/skel ]]; then
+    gosu "$USERNAME" cp -rn /etc/skel/. "$HOMEDIR/"
 fi
 
 # Ensure critical user directories exist and have correct ownership
@@ -57,13 +34,13 @@ chown "$USERNAME":"$GROUPNAME" "$HOMEDIR/.cache"
 chown "$USERNAME":"$GROUPNAME" "$HOMEDIR/.config"
 chown "$USERNAME":"$GROUPNAME" "$HOMEDIR/.local"
 
-# Set up pre-commit cache fallback if the real one wasn't mounted
-if [[ -d "/.pre-commit-fallback" ]]; then
-    chown "$USERNAME":"$GROUPNAME" "/.pre-commit-fallback"
-    # Only create symlink if the real pre-commit cache doesn't exist
-    if [[ ! -e "$HOMEDIR/.cache/pre-commit" ]]; then
-        gosu "$USERNAME" ln -s /.pre-commit-fallback "$HOMEDIR/.cache/pre-commit"
-    fi
+# Inject GCP credentials if provided
+if [[ -n "$GCP_CREDENTIALS_B64" ]]; then
+    mkdir -p /etc/google
+    echo "$GCP_CREDENTIALS_B64" | base64 -d > /etc/google/application_default_credentials.json
+    chmod 600 /etc/google/application_default_credentials.json
+    chown "$USERNAME":"$GROUPNAME" /etc/google/application_default_credentials.json
+    export GOOGLE_APPLICATION_CREDENTIALS=/etc/google/application_default_credentials.json
 fi
 
 exec gosu "$USERNAME" /entrypoint_user.sh "$@"
