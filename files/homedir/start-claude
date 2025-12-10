@@ -1,12 +1,28 @@
-#!/bin/bash
-# Helper script to start Claude Code with common settings
+#! /bin/bash
 
-set -e
+set -e -o pipefail
 
-# Check if we're in a git repository
-if ! git rev-parse --git-dir > /dev/null 2>&1; then
-    echo "Warning: Not in a git repository"
+function initial_setup() {
+    echo "=== Performing initial Claude setup ==="
+
+    # MCP servers
+    claude mcp add --transport stdio context7 -- npx -y @upstash/context7-mcp
+    claude mcp add --transport stdio docling -- uvx --from=docling-mcp docling-mcp-server --transport stdio
+    claude mcp add --transport stdio playwright -- npx -y @playwright/mcp --headless --isolated
+
+    # Plugins
+    claude plugin marketplace add obra/superpowers-marketplace
+    claude plugin install superpowers@superpowers-marketplace
+}
+
+
+cd "${HOME}/workspace"
+
+if [ ! -d "${HOME}/.claude" ]; then  # 1st run
+    initial_setup
+else
+    claude plugin marketplace update
 fi
 
-# Start Claude Code
-exec claude "$@"
+#exec claude --allow-dangerously-skip-permissions "$@"
+exec claude --dangerously-skip-permissions "$@"

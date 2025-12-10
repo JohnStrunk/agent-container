@@ -1,17 +1,32 @@
-[user]
-    name = Claude Code Agent
-    email = agent@localhost
-
+[commit]
+	verbose = true
 [core]
-    editor = vim
-    autocrlf = input
-
-[alias]
-    st = status
-    co = checkout
-    br = branch
-    ci = commit
-    lg = log --oneline --graph --decorate
-
+	autocrlf = input
+	editor = vim
+[diff]
+	submodule = log
+[fetch]
+	prune = true
+	# pruneTags = true
+[gpg]
+	program = /usr/bin/gpg2
 [init]
-    defaultBranch = main
+	defaultBranch = main
+[merge]
+	ff = only
+	renamelimit = 99999
+[pull]
+	ff = only
+[push]
+	autoSetupRemote = true  # For new local branches, push to origin/branch
+	recurseSubmodules = check
+[status]
+	submoduleSummary = true
+[submodule]
+	recurse = true
+[tag]
+[transfer]
+	fsckobjects = true
+[user]
+	name = Claude Code
+	email = "noreply@anthropic.com"

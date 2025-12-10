@@ -2,6 +2,7 @@
 	verbose = true
 [core]
 	autocrlf = input
+	editor = vim
 [diff]
 	submodule = log
 [fetch]
