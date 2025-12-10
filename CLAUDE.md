@@ -64,6 +64,51 @@ Pre-commit hooks are extensively configured for:
 
 ## Development Workflow
 
+### Isolation Model (IMPORTANT)
+
+**This container uses VM-like isolation for safe agent operation.**
+
+**Agent can access:**
+
+- Workspace directory (read-write)
+- Main git repository (read-write, for worktree commits)
+- Built-in configs from `files/homedir/` (ephemeral)
+- Injected credentials (ephemeral)
+- Shared cache volume `agent-container-cache`
+
+**Agent CANNOT access:**
+
+- Host filesystem outside workspace
+- Host configs (`~/.claude`, `~/.config/gcloud`, etc.)
+- Docker socket
+- Host credentials or secrets
+
+**Configuration files:**
+
+- Located in `files/homedir/` directory
+- Built into container image at build time
+- Automatically copied to agent's home directory
+- Changes inside container are NOT persistent
+- To modify permanently: edit `files/homedir/` and rebuild image
+
+**Credentials:**
+
+- Never stored in git repository
+- Injected at container startup via `--gcp-credentials` flag
+- Auto-detected from `~/.config/gcloud/application_default_credentials.json`
+- Deleted when container exits
+- See `start-work --help` for details
+
+**Security:**
+
+- Agent cannot damage host configs
+- Agent cannot leak credentials between sessions
+- Agent cannot access Docker or escalate privileges
+- Limited blast radius (only workspace accessible)
+
+**See:** `docs/plans/2025-12-10-isolated-container-design.md` for complete
+design.
+
 ### Task Management
 
 **CRITICAL**: Always use the TodoWrite tool to plan and track tasks. This is
