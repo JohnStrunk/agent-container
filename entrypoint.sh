@@ -27,13 +27,4 @@ chown "$USERNAME":"$GROUPNAME" "$HOMEDIR/.cache"
 chown "$USERNAME":"$GROUPNAME" "$HOMEDIR/.config"
 chown "$USERNAME":"$GROUPNAME" "$HOMEDIR/.local"
 
-# Set up pre-commit cache fallback if the real one wasn't mounted
-if [[ -d "/.pre-commit-fallback" ]]; then
-    chown "$USERNAME":"$GROUPNAME" "/.pre-commit-fallback"
-    # Only create symlink if the real pre-commit cache doesn't exist
-    if [[ ! -e "$HOMEDIR/.cache/pre-commit" ]]; then
-        gosu "$USERNAME" ln -s /.pre-commit-fallback "$HOMEDIR/.cache/pre-commit"
-    fi
-fi
-
 exec gosu "$USERNAME" /entrypoint_user.sh "$@"
