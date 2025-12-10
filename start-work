@@ -155,13 +155,16 @@ docker run --rm -it \
     -e EGID="$(id -g)" \
     -e HOME="$HOME" \
     -e USER="$USER" \
-    -e CONTAINER_MOUNT_PATHS="$CONTAINER_MOUNT_PATHS" \
+    "${CREDENTIAL_ARGS[@]}" \
     -e GEMINI_API_KEY \
+    -e ANTHROPIC_API_KEY \
     -e ANTHROPIC_MODEL \
     -e ANTHROPIC_SMALL_FAST_MODEL \
     -e ANTHROPIC_VERTEX_PROJECT_ID \
     -e CLOUD_ML_REGION \
     -e CLAUDE_CODE_USE_VERTEX \
+    -e GH_TOKEN \
+    -e GITHUB_TOKEN \
     ghcr.io/johnstrunk/agent-container:latest "${CONTAINER_COMMAND[@]}"
 
 # If .cloude/settings.local.json exists in the worktree, display its contents
