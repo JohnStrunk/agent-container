@@ -4,6 +4,7 @@ set -e -o pipefail
 
 WORKTREE_BASE_DIR=~/src/worktrees
 IMAGE_NAME="ghcr.io/johnstrunk/agent-container"
+GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
 
 # Paths to mount at the same location inside the container
 # Only paths that exist on the host will be mounted
