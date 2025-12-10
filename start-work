@@ -100,12 +100,21 @@ else
 fi
 
 # Build mount arguments for isolated container
-MOUNT_ARGS+=(
-    "-v" "$WORKTREE_DIR:$WORKTREE_DIR"
-    "-v" "/var/run/docker.sock:/var/run/docker.sock"
-    "-v" "$MAIN_REPO_DIR:$MAIN_REPO_DIR"
-    "-v" "agent-container-pre-commit-cache:/.pre-commit-fallback"
+MOUNT_ARGS=(
+    "-v" "$WORKTREE_DIR:$WORKTREE_DIR:rw"
+    "-v" "agent-container-cache:$HOME/.cache"
 )
+
+# Add main repo mount if using git worktrees
+if [[ "$USE_GIT" == 1 ]]; then
+    MOUNT_ARGS+=("-v" "$MAIN_REPO_DIR:$MAIN_REPO_DIR:rw")
+    echo "Mounting worktree: $WORKTREE_DIR (rw)"
+    echo "Mounting main repo: $MAIN_REPO_DIR (rw)"
+    echo "Mounting cache volume: agent-container-cache"
+else
+    echo "Mounting current directory: $WORKTREE_DIR (rw)"
+    echo "Mounting cache volume: agent-container-cache"
+fi
 
 # Start the agent container, mounting the worktree
 if [[ ${#CONTAINER_COMMAND[@]} -gt 0 ]]; then
