@@ -4,8 +4,15 @@
 
 This is the **Agent Container** project - a Docker-based development
 environment for working with AI coding agents (Claude Code and Gemini CLI)
-using Git worktrees. The project provides containerized isolation for
-development work with AI assistants.
+using Git worktrees.
+
+**Isolation Model:** The container uses VM-like isolation where only the
+workspace directory is accessible to the agent. No access to host configs,
+credentials, or Docker socket. This enables safe unsupervised agent
+operation.
+
+The project provides containerized isolation for development work with AI
+assistants.
 
 ## Project Structure
 
