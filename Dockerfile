@@ -51,11 +51,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest@sha256:ae9ff79d095a61faf534a882ad6378e81
 
 # Install Python tools globally during build to avoid runtime delay
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-# hadolint ignore=DL3013
-RUN echo "Installing Python tools globally..." && \
+# hadolint ignore=DL3013,DL3042
+RUN --mount=type=cache,target=/root/.cache/pip \
+    echo "Installing Python tools globally..." && \
     for tool in $(echo "$PYTHON_TOOLS" | tr ',' ' '); do \
-        echo "Installing $tool..." && \
-        pip install --no-cache-dir --break-system-packages "$tool"; \
+    echo "Installing $tool..." && \
+    pip install --cache-dir=/root/.cache/pip --break-system-packages "$tool"; \
     done && \
     echo "Python tools installation complete"
 
