@@ -80,7 +80,7 @@ RUN npm install -g \
 
 # Copy default configuration files to /etc/skel/
 # These will be copied to user home by entrypoint.sh
-COPY files/homedir/ /etc/skel/
+COPY --chown=0:0 --chmod=u=rw,u+X,go=r,go+X files/homedir/ /etc/skel/
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod a+rx /entrypoint.sh
