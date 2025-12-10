@@ -4,8 +4,15 @@
 
 This is the **Agent Container** project - a Docker-based development
 environment for working with AI coding agents (Claude Code and Gemini CLI)
-using Git worktrees. The project provides containerized isolation for
-development work with AI assistants.
+using Git worktrees.
+
+**Isolation Model:** The container uses VM-like isolation where only the
+workspace directory is accessible to the agent. No access to host configs,
+credentials, or Docker socket. This enables safe unsupervised agent
+operation.
+
+The project provides containerized isolation for development work with AI
+assistants.
 
 ## Project Structure
 
@@ -52,7 +59,55 @@ Pre-commit hooks are extensively configured for:
 - Docker (hadolint via pre-commit)
 - Python linting and formatting
 
+**Cache:** Pre-commit hooks are cached in Docker volume
+`agent-container-cache` for fast startup across sessions.
+
 ## Development Workflow
+
+### Isolation Model (IMPORTANT)
+
+**This container uses VM-like isolation for safe agent operation.**
+
+**Agent can access:**
+
+- Workspace directory (read-write)
+- Main git repository (read-write, for worktree commits)
+- Built-in configs from `files/homedir/` (ephemeral)
+- Injected credentials (ephemeral)
+- Shared cache volume `agent-container-cache`
+
+**Agent CANNOT access:**
+
+- Host filesystem outside workspace
+- Host configs (`~/.claude`, `~/.config/gcloud`, etc.)
+- Docker socket
+- Host credentials or secrets
+
+**Configuration files:**
+
+- Located in `files/homedir/` directory
+- Built into container image at build time
+- Automatically copied to agent's home directory
+- Changes inside container are NOT persistent
+- To modify permanently: edit `files/homedir/` and rebuild image
+
+**Credentials:**
+
+- Never stored in git repository
+- Injected at container startup via `--gcp-credentials` flag
+- Auto-detected from `~/.config/gcloud/application_default_credentials.json`
+- Deleted when container exits
+- See `start-work --help` for details
+
+**Security:**
+
+- Agent cannot damage host configs
+- Agent cannot leak credentials between sessions
+- Agent cannot access Docker or escalate privileges
+- Limited blast radius (only workspace accessible)
+
+**See:** `docs/plans/2025-12-10-isolated-container-design.md` for complete
+design.
 
 ### Task Management
 
@@ -161,8 +216,8 @@ manually fix all reported issues
 
 ### Claude Code Configuration
 
-- `ANTHROPIC_MODEL` - Model to use
-  (default: claude-3-5-sonnet-20241022)
+- `ANTHROPIC_API_KEY` - Anthropic API key (for direct API access)
+- `ANTHROPIC_MODEL` - Model to use (default: claude-3-5-sonnet-20241022)
 - `ANTHROPIC_SMALL_FAST_MODEL` - Fast model for simple tasks
 - `ANTHROPIC_VERTEX_PROJECT_ID` - Google Cloud project for Vertex AI
 - `CLOUD_ML_REGION` - Cloud region for Vertex AI
@@ -176,31 +231,64 @@ manually fix all reported issues
 
 - `EUID` - User ID for container user (default: 1000)
 - `EGID` - Group ID for container user (default: 1000)
-- `PYTHON_TOOLS` - Comma-separated list of Python tools to install
+
+**Note:** `PYTHON_TOOLS` environment variable is no longer used. Python
+tools are installed in the image at build time.
+
+### GCP Credential Injection
+
+For Vertex AI, use credential file injection instead of mounting:
+
+```bash
+# Auto-detect from default location
+start-work -b feature
+
+# Custom path
+start-work -b feature --gcp-credentials ~/my-sa.json
+```
+
+Credentials are ephemeral and deleted when container exits.
 
 ## Container Architecture
 
 ### Entrypoint Flow
 
-1. `entrypoint.sh` - Creates user/group, sets up permissions, configures
-   Docker access
-2. `entrypoint_user.sh` - Installs Python tools with uv, sets up pre-commit
+1. `entrypoint.sh` - Creates user/group, sets up permissions, injects
+   credentials
+   - Creates user with host UID/GID
+   - Manually copies `/etc/skel/` to home (configs from `files/homedir/`)
+   - Decodes and writes GCP credentials if provided
+2. `entrypoint_user.sh` - User-level setup, runs pre-commit
 
 ### Volume Mounts
 
-- `/worktree` - Main working directory
-- `~/.claude` - Claude Code configuration
-- `~/.gemini` - Gemini CLI configuration
-- `~/.config/gcloud` - Google Cloud configuration
-- `~/.cache/pre-commit` - Pre-commit cache
-- `/var/run/docker.sock` - Docker socket access
+**Workspace (read-write):**
+
+- `/worktree` or current directory - Main working directory
+
+**Main repository (read-write, if using worktrees):**
+
+- Git repository root - Required for worktree commits
+
+**Cache volume (read-write):**
+
+- `agent-container-cache` → `~/.cache` - Shared across all sessions
+
+**No other mounts.** No access to:
+
+- `~/.claude` (config built into image)
+- `~/.gemini` (config built into image)
+- `~/.config/gcloud` (credentials injected at runtime)
+- `~/.cache/pre-commit` (now in cache volume)
+- `/var/run/docker.sock` (no Docker access)
 
 ### User Security
 
 - Container runs as non-root user
 - UID/GID mapping from host
-- Docker group access when socket is available
-- Proper permission handling for mounted volumes
+- No Docker group access (no Docker socket)
+- Proper permission handling for mounted workspace
+- Credentials written with restrictive permissions (600)
 
 ## Common Tasks
 

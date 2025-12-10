@@ -4,31 +4,48 @@ set -e -o pipefail
 
 WORKTREE_BASE_DIR=~/src/worktrees
 IMAGE_NAME="ghcr.io/johnstrunk/agent-container"
-
-# Paths to mount at the same location inside the container
-# Only paths that exist on the host will be mounted
-CONTAINER_MOUNTS=(
-    "$HOME/.cache/pre-commit"
-    "$HOME/.cache/uv"
-    "$HOME/.claude"
-    "$HOME/.claude.json"
-    "$HOME/.config/gcloud"
-    "$HOME/.gemini"
-    "$HOME/Documents/Obsidian/RedHat"
-)
+GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
 
 function usage {
     cat - <<EOF
-$0: Start using a coding agent on a git worktree
-Usage: $0 [-b <branch_name>] [command...]
-  -b <branch_name>: The name of the branch to create or switch to
-  command...: Optional command to execute in the container (container will exit after execution)
+$0: Start using a coding agent on a git worktree (isolated container)
 
-* Worktrees are stored in $WORKTREE_BASE_DIR.
-* If the branch does not exist, it will be created from the current HEAD.
-* If the branch exists, it will switch to that branch.
-* If not in a git repository or a branch name is not provided, the current directory will be used.
-* If a command is provided, it will be executed in the container and the container will exit.
+Usage: $0 [options] [-b <branch_name>] [command...]
+
+Options:
+  -b, --branch <name>         Branch name for git worktree
+  --gcp-credentials <path>    Path to GCP service account JSON key file
+                              (default: ~/.config/gcloud/application_default_credentials.json)
+  -h, --help                  Show this help
+
+Arguments:
+  command...                  Optional command to execute in the container
+                              (container will exit after execution)
+
+Environment Variables:
+  ANTHROPIC_API_KEY          Anthropic API key for Claude
+  ANTHROPIC_MODEL            Model to use (default: claude-3-5-sonnet-20241022)
+  GEMINI_API_KEY             Google Gemini API key
+  GH_TOKEN/GITHUB_TOKEN      GitHub token for Copilot
+  (See README.md for complete list)
+
+Isolation:
+  * Container has NO access to host filesystem except workspace
+  * No Docker socket access
+  * Configs built into image (not shared with host)
+  * Credentials injected at runtime (ephemeral)
+  * Cache volume shared across sessions: agent-container-cache
+
+Storage:
+  * Worktrees are stored in $WORKTREE_BASE_DIR
+  * Cache volume: docker volume ls | grep agent-container-cache
+  * Clear cache: docker volume rm agent-container-cache
+
+Examples:
+  $0 -b feature-auth                    # Start interactive session
+  $0 -b feature-auth -- claude          # Run claude directly
+  $0 --gcp-credentials ~/my-sa.json -b feature  # Custom GCP credentials
+  $0                                    # Use current directory (no git)
 EOF
 }
 
@@ -60,11 +77,16 @@ function setup_worktree {
 BRANCH_NAME=""
 CONTAINER_COMMAND=()
 USE_GIT=0
+GCP_CREDS_PATH=""  # Empty means auto-detect
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         -b|--branch)
             BRANCH_NAME="$2"
+            shift 2
+            ;;
+        --gcp-credentials)
+            GCP_CREDS_PATH="$2"
             shift 2
             ;;
         -h|--help)
@@ -110,33 +132,40 @@ else
     MAIN_REPO_DIR="$(realpath "$(pwd)")"
 fi
 
-# Build mount arguments for existing paths
-MOUNT_ARGS=()
-MOUNTED_PATHS=()
-for path in "${CONTAINER_MOUNTS[@]}"; do
-    if [[ -e "$path" ]]; then
-        MOUNT_ARGS+=("-v" "$path:$path")
-        MOUNTED_PATHS+=("$path")
-        echo "Mounting: $path"
-    else
-        echo "Skipping non-existent path: $path"
-    fi
-done
-
-# Add the main repo directory and worktree directory to the list of paths that need parent ownership fixed
-MOUNTED_PATHS+=("$MAIN_REPO_DIR")
-MOUNTED_PATHS+=("$WORKTREE_DIR")
-
-# Create colon-separated list of mounted paths for the container
-CONTAINER_MOUNT_PATHS=$(IFS=':'; echo "${MOUNTED_PATHS[*]}")
-
-# Core mounts (always needed)
-MOUNT_ARGS+=(
-    "-v" "$WORKTREE_DIR:$WORKTREE_DIR"
-    "-v" "/var/run/docker.sock:/var/run/docker.sock"
-    "-v" "$MAIN_REPO_DIR:$MAIN_REPO_DIR"
-    "-v" "agent-container-pre-commit-cache:/.pre-commit-fallback"
+# Build mount arguments for isolated container
+MOUNT_ARGS=(
+    "-v" "$WORKTREE_DIR:$WORKTREE_DIR:rw"
+    "-v" "agent-container-cache:$HOME/.cache"
 )
+
+# Add main repo mount if using git worktrees
+if [[ "$USE_GIT" == 1 ]]; then
+    MOUNT_ARGS+=("-v" "$MAIN_REPO_DIR:$MAIN_REPO_DIR:rw")
+    echo "Mounting worktree: $WORKTREE_DIR (rw)"
+    echo "Mounting main repo: $MAIN_REPO_DIR (rw)"
+    echo "Mounting cache volume: agent-container-cache"
+else
+    echo "Mounting current directory: $WORKTREE_DIR (rw)"
+    echo "Mounting cache volume: agent-container-cache"
+fi
+
+# Handle GCP credential injection
+CREDENTIAL_ARGS=()
+
+# Auto-detect if not specified
+if [[ -z "$GCP_CREDS_PATH" ]]; then
+    GCP_CREDS_PATH="$GCP_CREDS_DEFAULT"
+fi
+
+# Inject credentials if file exists
+if [[ -f "$GCP_CREDS_PATH" ]]; then
+    echo "Injecting GCP credentials from: $GCP_CREDS_PATH"
+    GCP_CREDS_B64=$(base64 -w 0 "$GCP_CREDS_PATH")
+    CREDENTIAL_ARGS+=("-e" "GCP_CREDENTIALS_B64=$GCP_CREDS_B64")
+else
+    echo "No GCP credentials file found (checked: $GCP_CREDS_PATH)"
+    echo "GCP authentication will rely on environment variables only"
+fi
 
 # Start the agent container, mounting the worktree
 if [[ ${#CONTAINER_COMMAND[@]} -gt 0 ]]; then
@@ -154,13 +183,16 @@ docker run --rm -it \
     -e EGID="$(id -g)" \
     -e HOME="$HOME" \
     -e USER="$USER" \
-    -e CONTAINER_MOUNT_PATHS="$CONTAINER_MOUNT_PATHS" \
+    "${CREDENTIAL_ARGS[@]}" \
     -e GEMINI_API_KEY \
+    -e ANTHROPIC_API_KEY \
     -e ANTHROPIC_MODEL \
     -e ANTHROPIC_SMALL_FAST_MODEL \
     -e ANTHROPIC_VERTEX_PROJECT_ID \
     -e CLOUD_ML_REGION \
     -e CLAUDE_CODE_USE_VERTEX \
+    -e GH_TOKEN \
+    -e GITHUB_TOKEN \
     ghcr.io/johnstrunk/agent-container:latest "${CONTAINER_COMMAND[@]}"
 
 # If .cloude/settings.local.json exists in the worktree, display its contents

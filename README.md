@@ -3,6 +3,10 @@
 A Docker-based development environment for working with AI coding agents
 (Claude Code, Gemini CLI, and GitHub Copilot CLI) using Git worktrees.
 
+**Key Feature: Strong Isolation** - The container uses a VM-like isolation
+model where only the workspace directory is accessible to the agent. No
+access to host configs, credentials, or Docker socket.
+
 ## Overview
 
 This project provides a containerized environment that enables developers to
@@ -10,19 +14,36 @@ work with AI coding agents on isolated Git branches using worktrees. The
 container comes pre-configured with:
 
 - **Claude Code** - Anthropic's AI coding assistant
-- **Gemini CLI** - Google's AI coding assistant
+- **Gemini CLI** - Google's Gemini CLI
 - **GitHub Copilot CLI** - GitHub's AI coding assistant
 - **Development tools** - Git, Node.js, Python, Docker CLI, and more
 - **Code quality tools** - pre-commit, hadolint, pipenv, poetry
 
+**Isolation Model:**
+
+- ✅ Only workspace directory accessible to agent
+- ✅ Configs built into container (not shared with host)
+- ✅ Credentials injected at runtime (ephemeral)
+- ✅ No Docker socket access
+- ✅ Shared cache volume for performance
+- ✅ Fast startup (containers vs VMs)
+
 ## Features
 
-- **Isolated Development**: Each branch gets its own worktree and container instance
+- **Strong Isolation**: Agent cannot access host filesystem, configs, or
+  Docker socket
+- **Workspace-Only Access**: Each branch gets its own worktree, only that
+  directory is accessible
 - **AI Agent Support**: Pre-installed Claude Code, Gemini CLI, and
   GitHub Copilot CLI
-- **Docker Integration**: Access to Docker socket for running additional containers
+- **Built-in Configs**: Default configurations built into image, not shared
+  with host
+- **Runtime Credential Injection**: Credentials injected at startup,
+  ephemeral and isolated
+- **Fast Performance**: Shared cache volume across sessions for quick
+  startup
+- **Git Worktrees**: Multiple concurrent sessions on different branches
 - **User Permissions**: Proper UID/GID mapping to avoid permission issues
-- **Persistent Configuration**: Mounts for AI agent configurations and caches
 
 ## Quick Start
 
@@ -78,19 +99,32 @@ copilot
 
 ### Configuration
 
-The container automatically mounts several directories for persistent configuration:
+The container uses built-in configurations from `files/homedir/`:
 
-- `~/.claude` - Claude Code configuration
-- `~/.gemini` - Gemini CLI configuration  
-- `~/.config/gcloud` - Google Cloud configuration
-- `~/.cache/pre-commit` - Pre-commit cache
+- `.claude.json` - Claude Code settings (model, preferences)
+- `.gitconfig` - Git configuration (name, email, aliases)
+- `start-claude` - Helper script
+
+**These are built into the container image and NOT shared with your host.**
+Changes you make inside the container are lost when it exits.
+
+To customize permanently:
+
+1. Edit files in `files/homedir/`
+2. Rebuild the image: `docker build -t ghcr.io/johnstrunk/agent-container .`
+3. Restart your container
+
+**Automatic mounts (OLD BEHAVIOR) have been removed.**
 
 ### Environment Variables
 
-Set these environment variables to configure the AI agents:
+**Authentication:**
+
+Set these environment variables to authenticate with AI services:
 
 **Claude Code:**
 
+- `ANTHROPIC_API_KEY` - Anthropic API key (for direct API access)
 - `ANTHROPIC_MODEL` - Model to use (default: claude-3-5-sonnet-20241022)
 - `ANTHROPIC_SMALL_FAST_MODEL` - Fast model for simple tasks
 - `ANTHROPIC_VERTEX_PROJECT_ID` - Google Cloud project for Vertex AI
@@ -103,8 +137,28 @@ Set these environment variables to configure the AI agents:
 
 **GitHub Copilot CLI:**
 
-- `GH_TOKEN` or `GITHUB_TOKEN` - Personal Access Token with "Copilot Requests" permission
+- `GH_TOKEN` or `GITHUB_TOKEN` - Personal Access Token with "Copilot
+  Requests" permission
 - Requires an active GitHub Copilot subscription
+
+**GCP Credential Injection:**
+
+For Vertex AI authentication, use credential file injection:
+
+```bash
+# Auto-detected from default location
+start-work -b feature  # Uses ~/.config/gcloud/application_default_credentials.json
+
+# Override with custom path
+start-work -b feature --gcp-credentials ~/my-service-account.json
+```
+
+The credential file is:
+
+- Base64-encoded and injected at container startup
+- Written to `/etc/google/application_default_credentials.json`
+- Deleted when container exits (ephemeral)
+- Never stored in the git repository
 
 ## Requirements
 
@@ -115,8 +169,14 @@ Set these environment variables to configure the AI agents:
 ## File Structure
 
 - `Dockerfile` - Container image definition
-- `entrypoint.sh` - Container startup script with user setup
+- `entrypoint.sh` - Container startup script with user setup and credential
+  injection
+- `entrypoint_user.sh` - User-level initialization
 - `start-work` - Main script to create worktrees and start containers
+- `files/homedir/` - Built-in configuration files (copied to container)
+  - `.claude.json` - Claude Code settings
+  - `.gitconfig` - Git configuration
+  - `start-claude` - Helper script
 - `LICENSE` - MIT License
 
 ## Docker Image
@@ -128,6 +188,50 @@ The container is based on Debian 13 slim and includes:
 - **Development Tools**: Git, curl, gosu
 - **Python Tools**: pip, pipenv, poetry, pre-commit, uv
 - **Linting**: hadolint for Dockerfile linting
+
+## Isolation & Security
+
+This container uses a VM-like isolation model for safe agent operation:
+
+**What the agent CAN access:**
+
+- ✅ Workspace directory (read-write)
+- ✅ Main git repository (read-write, for worktree commits)
+- ✅ Built-in configs (ephemeral, changes lost on exit)
+- ✅ Injected credentials (ephemeral, deleted on exit)
+- ✅ Shared cache volume (persistent across sessions)
+
+**What the agent CANNOT access:**
+
+- ❌ Host filesystem outside workspace
+- ❌ Host configs (`~/.claude`, `~/.config/gcloud`, etc.)
+- ❌ Docker socket (no container creation)
+- ❌ Host credentials or secrets
+- ❌ Other users' files or directories
+
+**Security properties:**
+
+- Agent cannot corrupt your host configs
+- Agent cannot access credentials outside its session
+- Agent cannot start containers or escalate privileges
+- Credentials are ephemeral (deleted when container exits)
+- Cache is isolated from host filesystem
+
+**Cache management:**
+
+```bash
+# View cache volume
+docker volume ls | grep agent-container-cache
+
+# Inspect cache size
+docker system df -v | grep agent-container-cache
+
+# Clear cache (forces fresh installs)
+docker volume rm agent-container-cache
+```
+
+**See also:** `docs/plans/2025-12-10-isolated-container-design.md` for
+complete design rationale.
 
 ## License
 

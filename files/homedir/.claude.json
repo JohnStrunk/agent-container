@@ -1,0 +1,13 @@
+{
+  "numStartups": 1,
+  "autoUpdates": false,
+  "firstStartTime": "2025-10-31T18:42:23.168Z",
+  "changelogLastFetched": 1761936149293,
+  "hasCompletedOnboarding": true,
+  "lastOnboardingVersion": "2.0.30",
+  "projects": {},
+  "hasOpusPlanDefault": false,
+  "bypassPermissionsModeAccepted": true,
+  "lastReleaseNotesSeen": "2.0.30",
+  "mcpServers": {}
+}

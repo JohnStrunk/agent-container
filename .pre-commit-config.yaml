@@ -85,7 +85,8 @@ repos:
       - id: markdownlint
         exclude: |
           (?x)^(
-                .github/pull_request_template.md
+                .github/pull_request_template.md|
+                docs/plans/.*
             )$
 
   - repo: https://github.com/renovatebot/pre-commit-hooks
