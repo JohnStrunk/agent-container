@@ -3,6 +3,10 @@
 A Docker-based development environment for working with AI coding agents
 (Claude Code, Gemini CLI, and GitHub Copilot CLI) using Git worktrees.
 
+**Key Feature: Strong Isolation** - The container uses a VM-like isolation
+model where only the workspace directory is accessible to the agent. No
+access to host configs, credentials, or Docker socket.
+
 ## Overview
 
 This project provides a containerized environment that enables developers to
@@ -10,10 +14,19 @@ work with AI coding agents on isolated Git branches using worktrees. The
 container comes pre-configured with:
 
 - **Claude Code** - Anthropic's AI coding assistant
-- **Gemini CLI** - Google's AI coding assistant
+- **Gemini CLI** - Google's Gemini CLI
 - **GitHub Copilot CLI** - GitHub's AI coding assistant
 - **Development tools** - Git, Node.js, Python, Docker CLI, and more
 - **Code quality tools** - pre-commit, hadolint, pipenv, poetry
+
+**Isolation Model:**
+
+- ✅ Only workspace directory accessible to agent
+- ✅ Configs built into container (not shared with host)
+- ✅ Credentials injected at runtime (ephemeral)
+- ✅ No Docker socket access
+- ✅ Shared cache volume for performance
+- ✅ Fast startup (containers vs VMs)
 
 ## Features
 
