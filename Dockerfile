@@ -1,10 +1,23 @@
+# Stage 1: Download and extract Go
+FROM debian:13-slim@sha256:e711a7b30ec1261130d0a121050b4ed81d7fb28aeabcf4ea0c7876d4e9f5aca2 AS golang-installer
+ARG GOLANG_VERSION=1.25.0
+# hadolint ignore=DL3008
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
+    curl -fsSLo /tmp/go.tar.gz https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz && \
+    tar -C /tmp -xzf /tmp/go.tar.gz
+
+# Stage 2: Final image
 FROM debian:13-slim@sha256:e711a7b30ec1261130d0a121050b4ed81d7fb28aeabcf4ea0c7876d4e9f5aca2
 
-ARG GOLANG_VERSION=1.25.0
-ARG HADOLINT_VERSION=2.12.0
+# PYTHON_TOOLS documented here for reference
 ENV PYTHON_TOOLS=dvc[all],pipenv,poetry,pre-commit
-
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Allow higher UID/GID range for useradd (stable configuration)
+RUN sed -i 's/^UID_MIN.*/UID_MIN 1000/' /etc/login.defs && \
+    sed -i 's/^UID_MAX.*/UID_MAX 200000/' /etc/login.defs
+
+# Install base system packages (debian-native tools)
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
 # hadolint ignore=DL3008
 RUN --mount=type=cache,target=/var/cache/apt \
@@ -42,19 +55,29 @@ RUN --mount=type=cache,target=/var/cache/apt \
     tk \
     unzip \
     vim \
-    yq \
-    && \
+    yq
+
+# Install HashiCorp repository and terraform (separate layer for better caching)
+# hadolint ignore=DL3008
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
     curl -fsSL https://apt.releases.hashicorp.com/gpg > /etc/apt/trusted.gpg.d/hashicorp.asc && \
     echo "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main" > /etc/apt/sources.list.d/hashicorp.list && \
     apt-get update && \
     apt-get install -y --no-install-recommends terraform
 
-# Allow higher UID/GID range for useradd
-RUN sed -i 's/^UID_MIN.*/UID_MIN 1000/' /etc/login.defs && \
-    sed -i 's/^UID_MAX.*/UID_MAX 200000/' /etc/login.defs
-
 # Install uv and uvx from the official Astral image
 COPY --from=ghcr.io/astral-sh/uv:latest@sha256:ae9ff79d095a61faf534a882ad6378e8159d2ce322691153d68d2afac7422840 /uv /uvx /bin/
+
+# Install golang from builder stage
+COPY --from=golang-installer /tmp/go /usr/local/go
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Install hadolint
+ARG HADOLINT_VERSION=2.12.0
+RUN curl -fsSLo /tmp/hadolint https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64 && \
+    install /tmp/hadolint /usr/local/bin && \
+    rm -f /tmp/hadolint
 
 # Install Python tools globally during build to avoid runtime delay
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -67,20 +90,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     done && \
     echo "Python tools installation complete"
 
-# Install hadolint
-RUN curl -fsSLo /tmp/hadolint https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64 && \
-    install /tmp/hadolint /usr/local/bin && \
-    rm -f /tmp/hadolint
-
-# Install golang
-RUN curl -fsSLo /tmp/go.tar.gz https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf /tmp/go.tar.gz && \
-    rm -f /tmp/go.tar.gz
-ENV PATH="/usr/local/go/bin:${PATH}"
-
-# Install coding agents
+# Install coding agents with npm cache mount
 # hadolint ignore=DL3016
-RUN npm install -g \
+RUN --mount=type=cache,target=/root/.npm \
+    npm install -g --cache /root/.npm \
     @anthropic-ai/claude-code@latest \
     @google/gemini-cli@latest \
     @github/copilot@latest
