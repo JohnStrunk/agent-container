@@ -30,12 +30,20 @@ container comes pre-configured with:
 
 ## Features
 
-- **Isolated Development**: Each branch gets its own worktree and container instance
+- **Strong Isolation**: Agent cannot access host filesystem, configs, or
+  Docker socket
+- **Workspace-Only Access**: Each branch gets its own worktree, only that
+  directory is accessible
 - **AI Agent Support**: Pre-installed Claude Code, Gemini CLI, and
   GitHub Copilot CLI
-- **Docker Integration**: Access to Docker socket for running additional containers
+- **Built-in Configs**: Default configurations built into image, not shared
+  with host
+- **Runtime Credential Injection**: Credentials injected at startup,
+  ephemeral and isolated
+- **Fast Performance**: Shared cache volume across sessions for quick
+  startup
+- **Git Worktrees**: Multiple concurrent sessions on different branches
 - **User Permissions**: Proper UID/GID mapping to avoid permission issues
-- **Persistent Configuration**: Mounts for AI agent configurations and caches
 
 ## Quick Start
 
