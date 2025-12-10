@@ -10,3 +10,8 @@ Cache volume test passed: Wed Dec 10 15:16:09 UTC 2025
 Tested cache volume mounting and persistence
 Verified data persists across container recreations
 Verified volume is shared across sessions
+Integration test passed: Wed Dec 10 15:17:41 UTC 2025
+Tested full start-work workflow with git worktrees
+Verified mount messages correct (worktree, main repo, cache)
+Verified works without credentials (expected message shown)
+Verified worktree lifecycle (created and accessible)
