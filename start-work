@@ -6,18 +6,6 @@ WORKTREE_BASE_DIR=~/src/worktrees
 IMAGE_NAME="ghcr.io/johnstrunk/agent-container"
 GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
 
-# Paths to mount at the same location inside the container
-# Only paths that exist on the host will be mounted
-CONTAINER_MOUNTS=(
-    "$HOME/.cache/pre-commit"
-    "$HOME/.cache/uv"
-    "$HOME/.claude"
-    "$HOME/.claude.json"
-    "$HOME/.config/gcloud"
-    "$HOME/.gemini"
-    "$HOME/Documents/Obsidian/RedHat"
-)
-
 function usage {
     cat - <<EOF
 $0: Start using a coding agent on a git worktree
@@ -111,27 +99,7 @@ else
     MAIN_REPO_DIR="$(realpath "$(pwd)")"
 fi
 
-# Build mount arguments for existing paths
-MOUNT_ARGS=()
-MOUNTED_PATHS=()
-for path in "${CONTAINER_MOUNTS[@]}"; do
-    if [[ -e "$path" ]]; then
-        MOUNT_ARGS+=("-v" "$path:$path")
-        MOUNTED_PATHS+=("$path")
-        echo "Mounting: $path"
-    else
-        echo "Skipping non-existent path: $path"
-    fi
-done
-
-# Add the main repo directory and worktree directory to the list of paths that need parent ownership fixed
-MOUNTED_PATHS+=("$MAIN_REPO_DIR")
-MOUNTED_PATHS+=("$WORKTREE_DIR")
-
-# Create colon-separated list of mounted paths for the container
-CONTAINER_MOUNT_PATHS=$(IFS=':'; echo "${MOUNTED_PATHS[*]}")
-
-# Core mounts (always needed)
+# Build mount arguments for isolated container
 MOUNT_ARGS+=(
     "-v" "$WORKTREE_DIR:$WORKTREE_DIR"
     "-v" "/var/run/docker.sock:/var/run/docker.sock"
