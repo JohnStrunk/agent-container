@@ -95,8 +95,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.npm \
     npm install -g --cache /root/.npm \
     @anthropic-ai/claude-code@latest \
-    @google/gemini-cli@latest \
-    @github/copilot@latest
+    @google/gemini-cli@latest
 
 # Copy default configuration files to /etc/skel/
 # These will be copied to user home by entrypoint.sh
