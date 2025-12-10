@@ -8,16 +8,44 @@ GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
 
 function usage {
     cat - <<EOF
-$0: Start using a coding agent on a git worktree
-Usage: $0 [-b <branch_name>] [command...]
-  -b <branch_name>: The name of the branch to create or switch to
-  command...: Optional command to execute in the container (container will exit after execution)
+$0: Start using a coding agent on a git worktree (isolated container)
 
-* Worktrees are stored in $WORKTREE_BASE_DIR.
-* If the branch does not exist, it will be created from the current HEAD.
-* If the branch exists, it will switch to that branch.
-* If not in a git repository or a branch name is not provided, the current directory will be used.
-* If a command is provided, it will be executed in the container and the container will exit.
+Usage: $0 [options] [-b <branch_name>] [command...]
+
+Options:
+  -b, --branch <name>         Branch name for git worktree
+  --gcp-credentials <path>    Path to GCP service account JSON key file
+                              (default: ~/.config/gcloud/application_default_credentials.json)
+  -h, --help                  Show this help
+
+Arguments:
+  command...                  Optional command to execute in the container
+                              (container will exit after execution)
+
+Environment Variables:
+  ANTHROPIC_API_KEY          Anthropic API key for Claude
+  ANTHROPIC_MODEL            Model to use (default: claude-3-5-sonnet-20241022)
+  GEMINI_API_KEY             Google Gemini API key
+  GH_TOKEN/GITHUB_TOKEN      GitHub token for Copilot
+  (See README.md for complete list)
+
+Isolation:
+  * Container has NO access to host filesystem except workspace
+  * No Docker socket access
+  * Configs built into image (not shared with host)
+  * Credentials injected at runtime (ephemeral)
+  * Cache volume shared across sessions: agent-container-cache
+
+Storage:
+  * Worktrees are stored in $WORKTREE_BASE_DIR
+  * Cache volume: docker volume ls | grep agent-container-cache
+  * Clear cache: docker volume rm agent-container-cache
+
+Examples:
+  $0 -b feature-auth                    # Start interactive session
+  $0 -b feature-auth -- claude          # Run claude directly
+  $0 --gcp-credentials ~/my-sa.json -b feature  # Custom GCP credentials
+  $0                                    # Use current directory (no git)
 EOF
 }
 
