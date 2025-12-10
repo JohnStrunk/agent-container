@@ -15,8 +15,15 @@ HOMEDIR="${HOME:-/home/$USERNAME}"
 # Ensure parent directories exist
 mkdir -p "$(dirname "$HOMEDIR")"
 groupadd -g "$EGID" "$GROUPNAME" || true
-useradd -o -u "$EUID" -g "$EGID" -m -d "$HOMEDIR" "$USERNAME"
+useradd -o -u "$EUID" -g "$EGID" -d "$HOMEDIR" "$USERNAME"
+mkdir -p "$HOMEDIR"
 chown "$USERNAME":"$GROUPNAME" "$HOMEDIR"
+
+# Manually copy /etc/skel/ contents to home directory
+# -n flag prevents overwriting existing files (handles pre-existing mounts)
+if [[ -d /etc/skel ]]; then
+    gosu "$USERNAME" cp -rn /etc/skel/. "$HOMEDIR/"
+fi
 
 # Ensure critical user directories exist and have correct ownership
 gosu "$USERNAME" mkdir -p "$HOMEDIR/.cache"
