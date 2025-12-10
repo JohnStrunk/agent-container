@@ -1,0 +1,8 @@
+{
+  "model": "claude-sonnet-4-5@20250929",
+  "smallFastModel": "claude-3-5-haiku-20241022",
+  "browserEnabled": true,
+  "settings": {
+    "conciseMode": false
+  }
+}

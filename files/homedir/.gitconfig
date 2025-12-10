@@ -1,0 +1,17 @@
+[user]
+    name = Claude Code Agent
+    email = agent@localhost
+
+[core]
+    editor = vim
+    autocrlf = input
+
+[alias]
+    st = status
+    co = checkout
+    br = branch
+    ci = commit
+    lg = log --oneline --graph --decorate
+
+[init]
+    defaultBranch = main
