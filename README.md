@@ -189,6 +189,50 @@ The container is based on Debian 13 slim and includes:
 - **Python Tools**: pip, pipenv, poetry, pre-commit, uv
 - **Linting**: hadolint for Dockerfile linting
 
+## Isolation & Security
+
+This container uses a VM-like isolation model for safe agent operation:
+
+**What the agent CAN access:**
+
+- ✅ Workspace directory (read-write)
+- ✅ Main git repository (read-write, for worktree commits)
+- ✅ Built-in configs (ephemeral, changes lost on exit)
+- ✅ Injected credentials (ephemeral, deleted on exit)
+- ✅ Shared cache volume (persistent across sessions)
+
+**What the agent CANNOT access:**
+
+- ❌ Host filesystem outside workspace
+- ❌ Host configs (`~/.claude`, `~/.config/gcloud`, etc.)
+- ❌ Docker socket (no container creation)
+- ❌ Host credentials or secrets
+- ❌ Other users' files or directories
+
+**Security properties:**
+
+- Agent cannot corrupt your host configs
+- Agent cannot access credentials outside its session
+- Agent cannot start containers or escalate privileges
+- Credentials are ephemeral (deleted when container exits)
+- Cache is isolated from host filesystem
+
+**Cache management:**
+
+```bash
+# View cache volume
+docker volume ls | grep agent-container-cache
+
+# Inspect cache size
+docker system df -v | grep agent-container-cache
+
+# Clear cache (forces fresh installs)
+docker volume rm agent-container-cache
+```
+
+**See also:** `docs/plans/2025-12-10-isolated-container-design.md` for
+complete design rationale.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
