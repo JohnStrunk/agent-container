@@ -253,25 +253,42 @@ Credentials are ephemeral and deleted when container exits.
 
 ### Entrypoint Flow
 
-1. `entrypoint.sh` - Creates user/group, sets up permissions, configures
-   Docker access
-2. `entrypoint_user.sh` - Installs Python tools with uv, sets up pre-commit
+1. `entrypoint.sh` - Creates user/group, sets up permissions, injects
+   credentials
+   - Creates user with host UID/GID
+   - Manually copies `/etc/skel/` to home (configs from `files/homedir/`)
+   - Decodes and writes GCP credentials if provided
+2. `entrypoint_user.sh` - User-level setup, runs pre-commit
 
 ### Volume Mounts
 
-- `/worktree` - Main working directory
-- `~/.claude` - Claude Code configuration
-- `~/.gemini` - Gemini CLI configuration
-- `~/.config/gcloud` - Google Cloud configuration
-- `~/.cache/pre-commit` - Pre-commit cache
-- `/var/run/docker.sock` - Docker socket access
+**Workspace (read-write):**
+
+- `/worktree` or current directory - Main working directory
+
+**Main repository (read-write, if using worktrees):**
+
+- Git repository root - Required for worktree commits
+
+**Cache volume (read-write):**
+
+- `agent-container-cache` → `~/.cache` - Shared across all sessions
+
+**No other mounts.** No access to:
+
+- `~/.claude` (config built into image)
+- `~/.gemini` (config built into image)
+- `~/.config/gcloud` (credentials injected at runtime)
+- `~/.cache/pre-commit` (now in cache volume)
+- `/var/run/docker.sock` (no Docker access)
 
 ### User Security
 
 - Container runs as non-root user
 - UID/GID mapping from host
-- Docker group access when socket is available
-- Proper permission handling for mounted volumes
+- No Docker group access (no Docker socket)
+- Proper permission handling for mounted workspace
+- Credentials written with restrictive permissions (600)
 
 ## Common Tasks
 
