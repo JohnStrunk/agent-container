@@ -216,8 +216,8 @@ manually fix all reported issues
 
 ### Claude Code Configuration
 
-- `ANTHROPIC_MODEL` - Model to use
-  (default: claude-3-5-sonnet-20241022)
+- `ANTHROPIC_API_KEY` - Anthropic API key (for direct API access)
+- `ANTHROPIC_MODEL` - Model to use (default: claude-3-5-sonnet-20241022)
 - `ANTHROPIC_SMALL_FAST_MODEL` - Fast model for simple tasks
 - `ANTHROPIC_VERTEX_PROJECT_ID` - Google Cloud project for Vertex AI
 - `CLOUD_ML_REGION` - Cloud region for Vertex AI
@@ -231,7 +231,23 @@ manually fix all reported issues
 
 - `EUID` - User ID for container user (default: 1000)
 - `EGID` - Group ID for container user (default: 1000)
-- `PYTHON_TOOLS` - Comma-separated list of Python tools to install
+
+**Note:** `PYTHON_TOOLS` environment variable is no longer used. Python
+tools are installed in the image at build time.
+
+### GCP Credential Injection
+
+For Vertex AI, use credential file injection instead of mounting:
+
+```bash
+# Auto-detect from default location
+start-work -b feature
+
+# Custom path
+start-work -b feature --gcp-credentials ~/my-sa.json
+```
+
+Credentials are ephemeral and deleted when container exits.
 
 ## Container Architecture
 
