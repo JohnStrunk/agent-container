@@ -16,8 +16,6 @@ function initial_setup() {
 }
 
 
-cd "${HOME}/workspace"
-
 if [ ! -d "${HOME}/.claude" ]; then  # 1st run
     initial_setup
 else

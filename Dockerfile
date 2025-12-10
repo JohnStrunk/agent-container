@@ -20,9 +20,11 @@ RUN --mount=type=cache,target=/var/cache/apt \
     g++ \
     gh \
     git \
+    gnupg \
     gosu \
     jq \
     less \
+    lsb-release \
     lsof \
     make \
     man-db \
@@ -40,7 +42,12 @@ RUN --mount=type=cache,target=/var/cache/apt \
     tk \
     unzip \
     vim \
-    yq
+    yq \
+    && \
+    curl -fsSL https://apt.releases.hashicorp.com/gpg > /etc/apt/trusted.gpg.d/hashicorp.asc && \
+    echo "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main" > /etc/apt/sources.list.d/hashicorp.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends terraform
 
 # Allow higher UID/GID range for useradd
 RUN sed -i 's/^UID_MIN.*/UID_MIN 1000/' /etc/login.defs && \
