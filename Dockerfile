@@ -77,6 +77,10 @@ RUN npm install -g \
     @google/gemini-cli@latest \
     @github/copilot@latest
 
+# Copy default configuration files to /etc/skel/
+# These will be copied to user home by entrypoint.sh
+COPY files/homedir/ /etc/skel/
+
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod a+rx /entrypoint.sh
 COPY entrypoint_user.sh /entrypoint_user.sh
