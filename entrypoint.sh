@@ -18,13 +18,6 @@ groupadd -g "$EGID" "$GROUPNAME" || true
 useradd -o -u "$EUID" -g "$EGID" -m -d "$HOMEDIR" "$USERNAME"
 chown "$USERNAME":"$GROUPNAME" "$HOMEDIR"
 
-# Give the user access to the Docker socket if it exists
-if [[ -S /var/run/docker.sock ]]; then
-    DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
-    groupadd -g "$DOCKER_GID" docker || true
-    usermod -aG docker "$USERNAME"
-fi
-
 # Ensure parent directories of mounted paths have correct permissions
 # Process CONTAINER_MOUNT_PATHS if provided by start-work script
 if [[ -n "$CONTAINER_MOUNT_PATHS" ]]; then
