@@ -118,10 +118,13 @@ To customize permanently:
 
 ### Environment Variables
 
-Set these environment variables to configure the AI agents:
+**Authentication:**
+
+Set these environment variables to authenticate with AI services:
 
 **Claude Code:**
 
+- `ANTHROPIC_API_KEY` - Anthropic API key (for direct API access)
 - `ANTHROPIC_MODEL` - Model to use (default: claude-3-5-sonnet-20241022)
 - `ANTHROPIC_SMALL_FAST_MODEL` - Fast model for simple tasks
 - `ANTHROPIC_VERTEX_PROJECT_ID` - Google Cloud project for Vertex AI
@@ -134,8 +137,28 @@ Set these environment variables to configure the AI agents:
 
 **GitHub Copilot CLI:**
 
-- `GH_TOKEN` or `GITHUB_TOKEN` - Personal Access Token with "Copilot Requests" permission
+- `GH_TOKEN` or `GITHUB_TOKEN` - Personal Access Token with "Copilot
+  Requests" permission
 - Requires an active GitHub Copilot subscription
+
+**GCP Credential Injection:**
+
+For Vertex AI authentication, use credential file injection:
+
+```bash
+# Auto-detected from default location
+start-work -b feature  # Uses ~/.config/gcloud/application_default_credentials.json
+
+# Override with custom path
+start-work -b feature --gcp-credentials ~/my-service-account.json
+```
+
+The credential file is:
+
+- Base64-encoded and injected at container startup
+- Written to `/etc/google/application_default_credentials.json`
+- Deleted when container exits (ephemeral)
+- Never stored in the git repository
 
 ## Requirements
 
