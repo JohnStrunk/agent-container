@@ -19,11 +19,9 @@ terraform.tfvars
 # Crash log files
 crash.log
 
-# Exclude SSH private keys (only .pub files should be here)
-ssh-keys/*
-!ssh-keys/*.pub
-!ssh-keys/.gitkeep
-!ssh-keys/README.md
+# Dynamically generated VM SSH keys
+vm-ssh-key
+vm-ssh-key.pub
 
 # GCP service account credentials (prevent accidental commits)
 *service-account*.json

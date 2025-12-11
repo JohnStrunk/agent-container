@@ -62,9 +62,10 @@ fi
 # Get VM IP and user
 VM_IP=$(get_vm_ip "$SCRIPT_DIR")
 VM_USER=$(get_vm_user "$SCRIPT_DIR")
+SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
 
 # Check VM reachable
-check_vm_reachable "$VM_IP" "$VM_USER"
+check_vm_reachable "$SCRIPT_DIR" "$VM_IP" "$VM_USER"
 
 # Construct remote path
 WORKSPACE_BASE=$(get_vm_workspace_path "$SCRIPT_DIR")
@@ -76,10 +77,12 @@ fi
 
 # Initialize git repository on VM if needed
 echo "Initializing repository on VM at $REMOTE_PATH"
-# shellcheck disable=SC2029
-ssh "$VM_USER@$VM_IP" "mkdir -p \"$REMOTE_PATH\" && cd \"$REMOTE_PATH\" && \
+vm_ssh "$SCRIPT_DIR" "$VM_USER" "$VM_IP" "mkdir -p \"$REMOTE_PATH\" && cd \"$REMOTE_PATH\" && \
   (git rev-parse --git-dir > /dev/null 2>&1 || \
    (git init && git config receive.denyCurrentBranch updateInstead))"
+
+# Set up git to use our SSH key
+export GIT_SSH_COMMAND="ssh -i $SSH_KEY -o StrictHostKeyChecking=no"
 
 # Add temporary remote
 REMOTE_NAME="vm-workspace-$$"
@@ -97,8 +100,7 @@ git push "$REMOTE_NAME" "$BRANCH_NAME:$BRANCH_NAME"
 
 # Checkout branch on VM
 echo "Checking out branch on VM..."
-# shellcheck disable=SC2029
-ssh "$VM_USER@$VM_IP" "cd \"$REMOTE_PATH\" && git checkout \"$BRANCH_NAME\""
+vm_ssh "$SCRIPT_DIR" "$VM_USER" "$VM_IP" "cd \"$REMOTE_PATH\" && git checkout \"$BRANCH_NAME\""
 
 echo "Done! Branch '$BRANCH_NAME' pushed successfully to VM."
 echo "SSH to VM and work in: $REMOTE_PATH"

@@ -51,14 +51,17 @@ get_vm_workspace_path() {
 
 # Check if VM is reachable via SSH
 # Args:
-#   $1 - VM IP address
-#   $2 - VM user
+#   $1 - Script directory (to locate SSH key)
+#   $2 - VM IP address
+#   $3 - VM user
 # Exits: 2 if VM not reachable
 check_vm_reachable() {
-  local vm_ip="$1"
-  local vm_user="$2"
+  local script_dir="$1"
+  local vm_ip="$2"
+  local vm_user="$3"
+  local ssh_key="$script_dir/vm-ssh-key"
 
-  if ! ssh -o ConnectTimeout=5 -o BatchMode=yes \
+  if ! ssh -i "$ssh_key" -o ConnectTimeout=5 -o BatchMode=yes \
        "$vm_user@$vm_ip" "exit" 2>/dev/null; then
     echo "Error: Cannot connect to VM at $vm_ip" >&2
     echo "Check that VM is running: virsh list" >&2
@@ -80,4 +83,34 @@ get_absolute_path() {
   fi
 
   cd "$path" && pwd
+}
+
+# Execute SSH command to VM
+# Args:
+#   $1 - Script directory (to locate SSH key)
+#   $2 - VM user
+#   $3 - VM IP
+#   $@ (remaining) - Command to execute on VM (optional, omit for interactive)
+# Returns: SSH command output
+# Exits: With SSH exit code
+vm_ssh() {
+  local script_dir="$1"
+  local vm_user="$2"
+  local vm_ip="$3"
+  shift 3
+
+  local ssh_key="$script_dir/vm-ssh-key"
+
+  ssh -i "$ssh_key" -o StrictHostKeyChecking=no "$vm_user@$vm_ip" "$@"
+}
+
+# Get SSH command string for rsync
+# Args:
+#   $1 - Script directory (to locate SSH key)
+# Returns: SSH command string for rsync -e option
+get_rsync_ssh_cmd() {
+  local script_dir="$1"
+  local ssh_key="$script_dir/vm-ssh-key"
+
+  echo "ssh -i $ssh_key -o StrictHostKeyChecking=no"
 }

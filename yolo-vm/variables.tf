@@ -46,12 +46,6 @@ variable "user_gid" {
   default     = 1000
 }
 
-variable "ssh_keys_dir" {
-  description = "Directory containing SSH public keys"
-  type        = string
-  default     = "./ssh-keys"
-}
-
 variable "debian_image_url" {
   description = "URL to Debian cloud image"
   type        = string

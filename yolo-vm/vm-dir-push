@@ -60,7 +60,7 @@ VM_IP=$(get_vm_ip "$SCRIPT_DIR")
 VM_USER=$(get_vm_user "$SCRIPT_DIR")
 
 # Check VM reachable
-check_vm_reachable "$VM_IP" "$VM_USER"
+check_vm_reachable "$SCRIPT_DIR" "$VM_IP" "$VM_USER"
 
 # Construct remote path
 WORKSPACE_BASE=$(get_vm_workspace_path "$SCRIPT_DIR")
@@ -71,13 +71,13 @@ else
 fi
 
 # Create remote directory if it doesn't exist
-# shellcheck disable=SC2029
-ssh "$VM_USER@$VM_IP" "mkdir -p \"$REMOTE_PATH\""
+vm_ssh "$SCRIPT_DIR" "$VM_USER" "$VM_IP" "mkdir -p \"$REMOTE_PATH\""
 
 # Perform rsync
 echo "Pushing $LOCAL_DIR to $VM_USER@$VM_IP:$REMOTE_PATH"
 
 rsync -avz \
+  -e "$(get_rsync_ssh_cmd "$SCRIPT_DIR")" \
   --exclude='node_modules/' \
   --exclude='__pycache__/' \
   --exclude='.venv/' \

@@ -5,6 +5,10 @@ terraform {
       source  = "dmacvicar/libvirt"
       version = "~> 0.9.0"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
     null = {
       source  = "hashicorp/null"
       version = "~> 3.0"
@@ -16,13 +20,28 @@ provider "libvirt" {
   uri = "qemu:///system"
 }
 
+# Generate SSH key pair for VM access
+resource "tls_private_key" "vm_ssh_key" {
+  algorithm = "ED25519"
+}
+
+# Write private key to file
+resource "local_file" "ssh_private_key" {
+  content         = tls_private_key.vm_ssh_key.private_key_openssh
+  filename        = "${path.module}/vm-ssh-key"
+  file_permission = "0600"
+}
+
+# Write public key to file
+resource "local_file" "ssh_public_key" {
+  content         = tls_private_key.vm_ssh_key.public_key_openssh
+  filename        = "${path.module}/vm-ssh-key.pub"
+  file_permission = "0644"
+}
+
 locals {
-  # Read all SSH public keys from directory
-  ssh_key_files = fileset(var.ssh_keys_dir, "*.pub")
-  ssh_keys = [
-    for f in local.ssh_key_files :
-    trimspace(file("${var.ssh_keys_dir}/${f}"))
-  ]
+  # Use dynamically generated SSH public key
+  ssh_keys = [tls_private_key.vm_ssh_key.public_key_openssh]
 
   # Read GCP service account key if path is provided
   gcp_service_account_key = var.gcp_service_account_key_path != "" ? file(var.gcp_service_account_key_path) : ""
@@ -233,7 +252,10 @@ resource "libvirt_domain" "debian_vm" {
 
 # Wait for cloud-init to complete
 resource "null_resource" "wait_for_cloud_init" {
-  depends_on = [libvirt_domain.debian_vm]
+  depends_on = [
+    libvirt_domain.debian_vm,
+    local_file.ssh_private_key
+  ]
 
   provisioner "local-exec" {
     command = <<-EOT
@@ -245,7 +267,7 @@ resource "null_resource" "wait_for_cloud_init" {
           echo "VM obtained IP: $IP"
           echo "Waiting for SSH to become available and cloud-init to complete..."
           for j in $(seq 1 60); do
-            if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 root@$IP "cloud-init status --wait > /dev/null && cloud-init status --long" 2>/dev/null; then
+            if ssh -i ${path.module}/vm-ssh-key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 root@$IP "cloud-init status --wait > /dev/null && cloud-init status --long" 2>/dev/null; then
               echo "Cloud-init completed successfully"
               exit 0
             fi

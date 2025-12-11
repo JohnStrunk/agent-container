@@ -56,9 +56,10 @@ fi
 # Get VM IP and user
 VM_IP=$(get_vm_ip "$SCRIPT_DIR")
 VM_USER=$(get_vm_user "$SCRIPT_DIR")
+SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
 
 # Check VM reachable
-check_vm_reachable "$VM_IP" "$VM_USER"
+check_vm_reachable "$SCRIPT_DIR" "$VM_IP" "$VM_USER"
 
 # Construct remote path
 WORKSPACE_BASE=$(get_vm_workspace_path "$SCRIPT_DIR")
@@ -69,20 +70,21 @@ else
 fi
 
 # Verify remote repository exists
-# shellcheck disable=SC2029
-if ! ssh "$VM_USER@$VM_IP" "test -d \"$REMOTE_PATH\"/.git"; then
+if ! vm_ssh "$SCRIPT_DIR" "$VM_USER" "$VM_IP" "test -d \"$REMOTE_PATH\"/.git"; then
   echo "Error: Git repository not found at $REMOTE_PATH on VM" >&2
   echo "Did you push with vm-git-push first?" >&2
   exit 1
 fi
 
 # Verify branch exists on VM
-# shellcheck disable=SC2029
-if ! ssh "$VM_USER@$VM_IP" \
+if ! vm_ssh "$SCRIPT_DIR" "$VM_USER" "$VM_IP" \
      "cd \"$REMOTE_PATH\" && git rev-parse --verify \"$BRANCH_NAME\" > /dev/null 2>&1"; then
   echo "Error: Branch '$BRANCH_NAME' not found on VM" >&2
   exit 3
 fi
+
+# Set up git to use our SSH key
+export GIT_SSH_COMMAND="ssh -i $SSH_KEY -o StrictHostKeyChecking=no"
 
 # Add temporary remote
 REMOTE_NAME="vm-workspace-$$"
