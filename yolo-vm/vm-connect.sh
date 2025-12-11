@@ -11,13 +11,17 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Source common functions
+# shellcheck source=vm-common.sh
+source "$SCRIPT_DIR/vm-common.sh"
+
 ./vm-up.sh
 
 VM_IP=$(terraform output -raw vm_ip)
 
 if [[ "$CONNECT_AS_ROOT" == "true" ]]; then
-  ssh -o StrictHostKeyChecking=no "root@$VM_IP"
+  vm_ssh "$SCRIPT_DIR" "root" "$VM_IP"
 else
   VM_USER=$(terraform output -raw default_user)
-  ssh -o StrictHostKeyChecking=no "$VM_USER@$VM_IP"
+  vm_ssh "$SCRIPT_DIR" "$VM_USER" "$VM_IP"
 fi

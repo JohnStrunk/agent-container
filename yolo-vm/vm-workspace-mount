@@ -73,14 +73,16 @@ fi
 VM_IP=$(get_vm_ip "$SCRIPT_DIR")
 VM_USER=$(get_vm_user "$SCRIPT_DIR")
 REMOTE_PATH=$(get_vm_workspace_path "$SCRIPT_DIR")
+SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
 
 # Check VM reachable
-check_vm_reachable "$VM_IP" "$VM_USER"
+check_vm_reachable "$SCRIPT_DIR" "$VM_IP" "$VM_USER"
 
 # Perform sshfs mount
 echo "Mounting $VM_USER@$VM_IP:$REMOTE_PATH to $MOUNT_POINT"
 
 sshfs \
+  -o IdentityFile="$SSH_KEY" \
   -o reconnect \
   -o ServerAliveInterval=15 \
   -o ServerAliveCountMax=3 \
