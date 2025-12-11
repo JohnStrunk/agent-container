@@ -3,12 +3,14 @@ output "vm_name" {
   value       = libvirt_domain.debian_vm.name
 }
 
+data "external" "vm_ip" {
+  program    = ["bash", "-c", "virsh --connect qemu:///system net-dhcp-leases default | grep ${var.vm_hostname} | grep -oP '([0-9]{1,3}\\.){3}[0-9]{1,3}' | head -1 | jq -R '{ip: .}' || echo '{\"ip\":\"not assigned\"}'"]
+  depends_on = [null_resource.wait_for_cloud_init]
+}
+
 output "vm_ip" {
   description = "IP address of the VM"
-  value = try(
-    libvirt_domain.debian_vm.network_interface[0].addresses[0],
-    "IP not yet assigned"
-  )
+  value       = data.external.vm_ip.result.ip
 }
 
 output "default_user" {
@@ -18,18 +20,12 @@ output "default_user" {
 
 output "ssh_command_default_user" {
   description = "SSH command to connect as default user"
-  value = try(
-    "ssh ${var.default_user}@${libvirt_domain.debian_vm.network_interface[0].addresses[0]}",
-    "Waiting for IP address..."
-  )
+  value       = "ssh ${var.default_user}@${data.external.vm_ip.result.ip}"
 }
 
 output "ssh_command_root" {
   description = "SSH command to connect as root"
-  value = try(
-    "ssh root@${libvirt_domain.debian_vm.network_interface[0].addresses[0]}",
-    "Waiting for IP address..."
-  )
+  value       = "ssh root@${data.external.vm_ip.result.ip}"
 }
 
 output "console_command" {
