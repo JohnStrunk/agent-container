@@ -252,7 +252,10 @@ resource "libvirt_domain" "debian_vm" {
 
 # Wait for cloud-init to complete
 resource "null_resource" "wait_for_cloud_init" {
-  depends_on = [libvirt_domain.debian_vm]
+  depends_on = [
+    libvirt_domain.debian_vm,
+    local_file.ssh_private_key
+  ]
 
   provisioner "local-exec" {
     command = <<-EOT
@@ -264,7 +267,7 @@ resource "null_resource" "wait_for_cloud_init" {
           echo "VM obtained IP: $IP"
           echo "Waiting for SSH to become available and cloud-init to complete..."
           for j in $(seq 1 60); do
-            if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 root@$IP "cloud-init status --wait > /dev/null && cloud-init status --long" 2>/dev/null; then
+            if ssh -i ${path.module}/vm-ssh-key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 root@$IP "cloud-init status --wait > /dev/null && cloud-init status --long" 2>/dev/null; then
               echo "Cloud-init completed successfully"
               exit 0
             fi
