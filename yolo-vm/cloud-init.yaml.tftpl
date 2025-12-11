@@ -52,6 +52,25 @@ runcmd:
   - virsh --connect qemu:///system pool-build default
   - virsh --connect qemu:///system pool-start default
   - virsh --connect qemu:///system pool-autostart default
+  # Fix AppArmor for terraform-provider-libvirt (issues #126, #920, #882)
+  - |
+    cat > /etc/apparmor.d/libvirt/TEMPLATE.qemu <<'APPARMOR_EOF'
+    #
+    # This profile is for the domain whose UUID matches this file.
+    #
+
+    #include <tunables/global>
+
+    profile LIBVIRT_TEMPLATE flags=(attach_disconnected) {
+      #include <abstractions/libvirt-qemu>
+
+      # Allow access to storage pool images (fix for terraform-provider-libvirt)
+      /var/lib/libvirt/images/*.qcow2 rwk,
+      /var/lib/libvirt/images/*.img rwk,
+      /var/lib/libvirt/images/*.iso rwk,
+    }
+    APPARMOR_EOF
+  - systemctl restart libvirtd
   # Remove pre-existing default network to avoid conflicts in nested scenarios
   - virsh --connect qemu:///system net-undefine default 2>/dev/null || true
   - mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
