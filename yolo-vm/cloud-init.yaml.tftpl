@@ -42,6 +42,9 @@ runcmd:
   - usermod -g ${user_gid} ${default_user}
   # Add user to docker group for container access
   - usermod -aG docker ${default_user}
+  # Add user to libvirt and kvm groups for virtualization access
+  - usermod -aG libvirt ${default_user}
+  - usermod -aG kvm ${default_user}
   - mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
   - |
     cat > /etc/systemd/system/serial-getty@ttyS0.service.d/override.conf <<EOF
@@ -121,5 +124,12 @@ packages:
   - gosu
   - ca-certificates
   - unzip
+  # Virtualization support for nested VMs
+  - qemu-system-x86
+  - qemu-guest-agent
+  - libvirt-daemon-system
+  - libvirt-clients
+  - virtinst
+  - bridge-utils
 
 final_message: "System boot complete. Console auto-login enabled for root."
