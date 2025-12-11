@@ -45,6 +45,15 @@ runcmd:
   # Add user to libvirt and kvm groups for virtualization access
   - usermod -aG libvirt ${default_user}
   - usermod -aG kvm ${default_user}
+  # Initialize libvirt default storage pool for nested virtualization
+  - mkdir -p /var/lib/libvirt/images
+  - chmod 755 /var/lib/libvirt/images
+  - virsh --connect qemu:///system pool-define-as default dir --target /var/lib/libvirt/images
+  - virsh --connect qemu:///system pool-build default
+  - virsh --connect qemu:///system pool-start default
+  - virsh --connect qemu:///system pool-autostart default
+  # Remove pre-existing default network to avoid conflicts in nested scenarios
+  - virsh --connect qemu:///system net-undefine default 2>/dev/null || true
   - mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
   - |
     cat > /etc/systemd/system/serial-getty@ttyS0.service.d/override.conf <<EOF

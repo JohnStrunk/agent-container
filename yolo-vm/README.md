@@ -301,11 +301,11 @@ vm_hostname = "my-hostname"
 See `variables.tf` for all configurable options:
 
 - `vm_name`: Virtual machine name
-- `vm_memory`: RAM in MB (default: 2048)
-- `vm_vcpu`: Number of CPUs (default: 2)
-- `vm_disk_size`: Disk size in bytes (default: 20GB)
+- `vm_memory`: RAM in MB (default: 4096)
+- `vm_vcpu`: Number of CPUs (default: 4)
+- `vm_disk_size`: Disk size in bytes (default: 40GB)
 - `vm_hostname`: VM hostname
-- `default_user`: Default username (default: debian)
+- `default_user`: Default username (default: user)
 - `ssh_keys_dir`: SSH keys directory (default: ./ssh-keys)
 - `debian_image_url`: Debian cloud image URL
 - `gcp_service_account_key_path`: Path to GCP service account JSON
@@ -313,6 +313,97 @@ See `variables.tf` for all configurable options:
 - `vertex_project_id`: Google Cloud project ID for Vertex AI
 - `vertex_region`: Google Cloud region for Vertex AI (default:
   us-central1)
+- `network_subnet_third_octet`: Third octet of VM network subnet
+  (192.168.X.0/24) (default: 123)
+
+## Nested Virtualization
+
+The VM supports nested virtualization, allowing you to run yolo-vm
+inside a yolo-vm. This is useful for testing VM provisioning or
+isolating AI agent work.
+
+### Prerequisites for Nested Virtualization
+
+1. **Host CPU must support nested virtualization**:
+
+   ```bash
+   # Check if nested virtualization is enabled
+   cat /sys/module/kvm_intel/parameters/nested  # Intel
+   cat /sys/module/kvm_amd/parameters/nested    # AMD
+   # Should output: Y or 1
+   ```
+
+2. **Enable nested KVM** (if not already enabled):
+
+   ```bash
+   # Intel
+   echo "options kvm_intel nested=1" | sudo tee /etc/modprobe.d/kvm.conf
+   # AMD
+   echo "options kvm_amd nested=1" | sudo tee /etc/modprobe.d/kvm.conf
+
+   # Reload module
+   sudo modprobe -r kvm_intel && sudo modprobe kvm_intel  # Intel
+   sudo modprobe -r kvm_amd && sudo modprobe kvm_amd      # AMD
+   ```
+
+### Running Nested VMs
+
+**Network subnets are automatically configured!** The `vm-up.sh`
+script detects if you're running inside a VM and automatically selects
+a different network subnet to avoid conflicts.
+
+```bash
+# Inside the outer VM, just run vm-up.sh normally
+./vm-up.sh
+# Script will detect you're on 192.168.123.x and use 192.168.200.0/24
+```
+
+**How Autodetection Works:**
+
+- Detects if running on `192.168.x.x` network
+- If on `192.168.122.x` or `192.168.123.x` → uses `192.168.200.0/24`
+- Otherwise → uses `192.168.(current+1).0/24`
+- Not on `192.168.x.x` → uses default `192.168.123.0/24`
+
+**Manual Override (Optional):**
+
+You can still manually specify a subnet if needed:
+
+```bash
+export NETWORK_SUBNET=150
+./vm-up.sh
+
+# Or use Terraform directly
+terraform apply -var="network_subnet_third_octet=150"
+```
+
+**Example Nested Setup:**
+
+```bash
+# 1. On host: Create outer VM (uses 192.168.123.0/24 by default)
+cd yolo-vm
+./vm-up.sh
+ssh user@<OUTER_VM_IP>
+
+# 2. Inside outer VM: Create inner VM (automatically uses different
+# subnet)
+cd ~/workspace
+git clone <your-repo-with-yolo-vm>
+cd yolo-vm
+./vm-up.sh  # Autodetects outer VM on 192.168.123.x, uses
+192.168.200.0/24
+ssh user@<INNER_VM_IP>
+```
+
+### Features Available for Nested VMs
+
+The VM is configured with:
+
+- **CPU passthrough** (`host-passthrough`) for nested virtualization
+- **Virtualization packages**: qemu-system-x86, libvirt, virtinst
+- **Pre-initialized libvirt**: Default storage pool and network setup
+- **Increased resources**: 4 vCPUs, 4GB RAM, 40GB disk (vs 2/2GB/20GB
+  previously)
 
 ## Managing SSH Keys
 

@@ -75,3 +75,13 @@ variable "vertex_region" {
   type        = string
   default     = "us-central1"
 }
+
+variable "network_subnet_third_octet" {
+  description = "Third octet of the VM network subnet (192.168.X.0/24). Change this when running nested VMs to avoid conflicts with the outer VM's network."
+  type        = number
+  default     = 123
+  validation {
+    condition     = var.network_subnet_third_octet >= 0 && var.network_subnet_third_octet <= 255
+    error_message = "Network subnet third octet must be between 0 and 255."
+  }
+}

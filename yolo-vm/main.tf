@@ -53,12 +53,12 @@ resource "libvirt_network" "default" {
 
   ips = [
     {
-      address = "192.168.122.1"
+      address = "192.168.${var.network_subnet_third_octet}.1"
       prefix  = 24
       dhcp = {
         ranges = [{
-          start = "192.168.122.2"
-          end   = "192.168.122.254"
+          start = "192.168.${var.network_subnet_third_octet}.2"
+          end   = "192.168.${var.network_subnet_third_octet}.254"
         }]
       }
     }
