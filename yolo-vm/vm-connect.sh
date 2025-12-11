@@ -13,6 +13,7 @@ cd "$SCRIPT_DIR"
 
 # Source common functions
 # shellcheck source=vm-common.sh
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/vm-common.sh"
 
 ./vm-up.sh
