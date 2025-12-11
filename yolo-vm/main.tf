@@ -157,6 +157,11 @@ resource "libvirt_domain" "debian_vm" {
     acpi = true
   }
 
+  # Enable nested virtualization by passing through host CPU
+  cpu = {
+    mode = "host-passthrough"
+  }
+
   devices = {
     disks = [
       {

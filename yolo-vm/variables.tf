@@ -7,19 +7,19 @@ variable "vm_name" {
 variable "vm_memory" {
   description = "Memory allocation for VM in MB"
   type        = number
-  default     = 2048
+  default     = 4096
 }
 
 variable "vm_vcpu" {
   description = "Number of virtual CPUs"
   type        = number
-  default     = 2
+  default     = 4
 }
 
 variable "vm_disk_size" {
-  description = "Disk size in bytes (20GB default)"
+  description = "Disk size in bytes (40GB default)"
   type        = number
-  default     = 21474836480
+  default     = 42949672960
 }
 
 variable "vm_hostname" {
