@@ -3,7 +3,7 @@ terraform {
   required_providers {
     libvirt = {
       source  = "dmacvicar/libvirt"
-      version = "~> 0.8.0"
+      version = "~> 0.9.0"
     }
     null = {
       source  = "hashicorp/null"
@@ -41,41 +41,72 @@ locals {
 # Create default NAT network
 resource "libvirt_network" "default" {
   name      = "default"
-  mode      = "nat"
-  domain    = "vm.local"
-  addresses = ["192.168.122.0/24"]
   autostart = true
 
-  dns {
-    enabled = true
+  domain = {
+    name = "vm.local"
   }
 
-  dhcp {
-    enabled = true
+  forward = {
+    mode = "nat"
   }
+
+  ips = [
+    {
+      address = "192.168.122.1"
+      prefix  = 24
+      dhcp = {
+        ranges = [{
+          start = "192.168.122.2"
+          end   = "192.168.122.254"
+        }]
+      }
+    }
+  ]
 }
 
 # Download Debian cloud image
 resource "libvirt_volume" "debian_base" {
-  name   = "debian-13-base.qcow2"
-  pool   = "default"
-  source = var.debian_image_url
-  format = "qcow2"
+  name = "debian-13-base.qcow2"
+  pool = "default"
+
+  target = {
+    format = {
+      type = "qcow2"
+    }
+  }
+
+  create = {
+    content = {
+      url = var.debian_image_url
+    }
+  }
 }
 
 # Create VM disk from base image
 resource "libvirt_volume" "debian_disk" {
-  name           = "${var.vm_name}-disk.qcow2"
-  pool           = "default"
-  base_volume_id = libvirt_volume.debian_base.id
-  size           = var.vm_disk_size
-  format         = "qcow2"
+  name     = "${var.vm_name}-disk.qcow2"
+  pool     = "default"
+  capacity = var.vm_disk_size
+
+  target = {
+    format = {
+      type = "qcow2"
+    }
+  }
+
+  backing_store = {
+    path = libvirt_volume.debian_base.path
+    format = {
+      type = "qcow2"
+    }
+  }
 }
 
 # Cloud-init configuration
 resource "libvirt_cloudinit_disk" "cloud_init" {
   name = "${var.vm_name}-cloud-init.iso"
-  pool = "default"
+
   user_data = templatefile("${path.module}/cloud-init.yaml.tftpl", {
     hostname                = var.vm_hostname
     default_user            = var.default_user
@@ -87,41 +118,111 @@ resource "libvirt_cloudinit_disk" "cloud_init" {
     vertex_region           = var.vertex_region
     homedir_files           = local.homedir_files
   })
+
+  meta_data = <<-EOF
+    instance-id: ${var.vm_name}
+    local-hostname: ${var.vm_hostname}
+  EOF
+}
+
+# Upload the cloud-init ISO into the pool as a volume
+resource "libvirt_volume" "cloud_init_volume" {
+  name = "${var.vm_name}-cloud-init-volume.iso"
+  pool = "default"
+
+  create = {
+    content = {
+      url = libvirt_cloudinit_disk.cloud_init.path
+    }
+  }
 }
 
 # Define the VM
 resource "libvirt_domain" "debian_vm" {
-  name   = var.vm_name
-  memory = var.vm_memory
-  vcpu   = var.vm_vcpu
+  name        = var.vm_name
+  memory      = var.vm_memory
+  memory_unit = "MiB"
+  vcpu        = var.vm_vcpu
 
-  cloudinit = libvirt_cloudinit_disk.cloud_init.id
+  type    = "kvm"
+  running = true
 
-  disk {
-    volume_id = libvirt_volume.debian_disk.id
+  os = {
+    type         = "hvm"
+    type_arch    = "x86_64"
+    type_machine = "q35"
   }
 
-  network_interface {
-    network_id     = libvirt_network.default.id
-    wait_for_lease = true
+  features = {
+    acpi = true
   }
 
-  console {
-    type        = "pty"
-    target_port = "0"
-    target_type = "serial"
-  }
+  devices = {
+    disks = [
+      {
+        source = {
+          volume = {
+            pool   = libvirt_volume.debian_disk.pool
+            volume = libvirt_volume.debian_disk.name
+          }
+        }
+        target = {
+          dev = "vda"
+          bus = "virtio"
+        }
+        driver = {
+          name = "qemu"
+          type = "qcow2"
+        }
+        boot = {
+          order = 1
+        }
+      },
+      {
+        device = "cdrom"
+        source = {
+          volume = {
+            pool   = libvirt_volume.cloud_init_volume.pool
+            volume = libvirt_volume.cloud_init_volume.name
+          }
+        }
+        target = {
+          dev = "sdb"
+          bus = "sata"
+        }
+      }
+    ]
 
-  console {
-    type        = "pty"
-    target_port = "1"
-    target_type = "virtio"
-  }
+    interfaces = [
+      {
+        type = "network"
+        model = {
+          type = "virtio"
+        }
+        source = {
+          network = {
+            network = libvirt_network.default.name
+          }
+        }
+      }
+    ]
 
-  graphics {
-    type        = "spice"
-    listen_type = "address"
-    autoport    = true
+    consoles = [
+      {
+        type        = "pty"
+        target_port = 0
+        target_type = "serial"
+      }
+    ]
+
+    graphics = [
+      {
+        spice = {
+          autoport    = "yes"
+          listen_type = "address"
+        }
+      }
+    ]
   }
 }
 
@@ -129,21 +230,32 @@ resource "libvirt_domain" "debian_vm" {
 resource "null_resource" "wait_for_cloud_init" {
   depends_on = [libvirt_domain.debian_vm]
 
-  provisioner "remote-exec" {
-    inline = [
-      # Wait for cloud-init to finish (quietly)
-      "cloud-init status --wait > /dev/null",
-      # Print the final status
-      "cloud-init status --long"
-    ]
-
-    connection {
-      type    = "ssh"
-      user    = "root"
-      host    = libvirt_domain.debian_vm.network_interface[0].addresses[0]
-      agent   = true
-      timeout = "10m"
-    }
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -e
+      echo "Waiting for VM to obtain IP address..."
+      for i in $(seq 1 60); do
+        IP=$(virsh --connect qemu:///system net-dhcp-leases default | grep ${var.vm_hostname} | grep -oP '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1 || true)
+        if [ -n "$IP" ]; then
+          echo "VM obtained IP: $IP"
+          echo "Waiting for SSH to become available and cloud-init to complete..."
+          for j in $(seq 1 60); do
+            if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 root@$IP "cloud-init status --wait > /dev/null && cloud-init status --long" 2>/dev/null; then
+              echo "Cloud-init completed successfully"
+              exit 0
+            fi
+            echo "Attempt $j/60: SSH or cloud-init not ready, waiting..."
+            sleep 5
+          done
+          echo "Timeout waiting for SSH or cloud-init"
+          exit 1
+        fi
+        echo "Attempt $i/60: No IP yet, waiting..."
+        sleep 5
+      done
+      echo "Timeout waiting for IP address"
+      exit 1
+    EOT
   }
 
   # Force re-run if VM is recreated
