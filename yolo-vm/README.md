@@ -10,6 +10,8 @@ This directory contains Terraform configuration to deploy a Debian 13
 - **SSH Key Management**: Centralized SSH key directory for access control
 - **Cloud-Init Provisioning**: Automated system configuration
 - **Dual User Access**: SSH access for both default user and root
+- **Constrained Sudo Access**: Default user can install packages and
+  manage services
 - **AI Coding Agents**: Pre-installed claude-code, gemini-cli, and
   copilot
 - **Vertex AI Integration**: Optional Google Cloud Vertex AI
