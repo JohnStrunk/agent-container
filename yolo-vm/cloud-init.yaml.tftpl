@@ -126,7 +126,7 @@ runcmd:
   - mv /root/.local/bin/uv /usr/local/bin/uv
   - mv /root/.local/bin/uvx /usr/local/bin/uvx
   # Install Python tools system-wide
-  - uv pip install --system pre-commit poetry pipenv 'dvc[all]'
+  - pip install --break-system-packages pre-commit poetry pipenv 'dvc[all]'
   # Install hadolint for Dockerfile linting
   - curl -fsSL https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64 -o /tmp/hadolint
   - install /tmp/hadolint /usr/local/bin/hadolint
