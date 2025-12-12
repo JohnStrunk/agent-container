@@ -121,23 +121,42 @@ Expected: Shows keys from ssh-keys/ directory
 
 ## Functional Testing
 
-### 1. Test Sudo Access (Default User)
+### 1. Test Constrained Sudo Access (Default User)
+
+Test allowed commands:
 
 ```bash
-ssh debian@<VM_IP> sudo whoami
+# Test package management sudo access
+ssh debian@<VM_IP> sudo apt-get update
+ssh debian@<VM_IP> sudo apt-get install -y tree
+
+# Test service management sudo access
+ssh debian@<VM_IP> sudo systemctl status ssh
+
+# Verify tree was installed
+ssh debian@<VM_IP> which tree
 ```
 
-Expected: `root`
+Expected: All commands succeed, tree binary is installed
 
-### 2. Test Package Installation
+Test that unauthorized sudo commands are blocked:
+
+```bash
+# Should fail - not in allowed list
+ssh debian@<VM_IP> sudo cat /etc/shadow
+```
+
+Expected: Permission denied or sudo error
+
+### 2. Test Package Installation as Root
 
 ```bash
 ssh root@<VM_IP> apt-get update
-ssh root@<VM_IP> apt-get install -y tree
-ssh root@<VM_IP> which tree
+ssh root@<VM_IP> apt-get install -y htop
+ssh root@<VM_IP> which htop
 ```
 
-Expected: Shows path to tree binary
+Expected: Shows path to htop binary
 
 ### 3. Test Serial Console Login
 

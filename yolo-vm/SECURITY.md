@@ -81,10 +81,14 @@ This configuration is NOT designed for:
 
 **Default user access:**
 
-- Unprivileged user (default: `debian`) for normal operations
+- Limited-privilege user (default: `debian`) for normal operations
 - SSH key-based authentication only
 - Access to all development tools and AI agents
 - Can read service account credentials (world-readable file)
+- Constrained sudo access for development tasks:
+  - Package management: `apt-get`, `apt`, `dpkg`
+  - Service management: `systemctl`
+  - No sudo required for docker/libvirt/kvm (group membership)
 
 **SSH key management:**
 
@@ -125,9 +129,10 @@ This provides:
 
 **User separation:**
 
-- AI agents run as unprivileged default user
-- Root access available but not required for agent operation
-- Docker socket access not exposed by default
+- AI agents run as limited-privilege default user with constrained sudo
+- Sudo access restricted to package management and service control
+- Root access available via console/SSH but not required for agent operation
+- Docker operations available via group membership (no sudo required)
 
 ## Known Security Limitations
 
@@ -162,6 +167,13 @@ This provides:
    - Risk: Compromises may go undetected
    - Mitigation: VM is disposable, easy to recreate
    - Production: Add logging, monitoring, IDS
+
+7. **Constrained sudo access for default user**
+   - Risk: AI agent can install packages and manage services
+   - Note: Package installation effectively grants root (post-install
+     scripts)
+   - Mitigation: Debian repos are trusted, VM is isolated and disposable
+   - Production: Remove sudo or use approval-gated package installation
 
 ### Terraform State Security
 
