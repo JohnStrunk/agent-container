@@ -12,8 +12,8 @@ total_output=$(echo "$input" | jq -r '.context_window.total_output_tokens')
 context_size=$(echo "$input" | jq -r '.context_window.context_window_size')
 cwd=$(echo "$input" | jq -r '.workspace.current_dir')
 
-# Calculate cost (Claude 3.5 Sonnet pricing: $3/M input, $15/M output)
-cost=$(echo "scale=2; ($total_input * 3 + $total_output * 15) / 1000000" | bc)
+raw_cost=$(echo "$input" | jq -r '.cost.total_cost_usd')
+cost=$(echo "scale=2; $raw_cost * 1" | bc)
 
 # Calculate context window percentage
 total_tokens=$((total_input + total_output))
