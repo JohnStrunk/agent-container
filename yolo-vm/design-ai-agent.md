@@ -23,7 +23,8 @@ minimizing credential scope.
 
 - VM must be self-contained with all required tools
 - Agent runs with limited credentials (cannot access broader GCP resources)
-- Unprivileged default user has access to all tools and credentials
+- Limited-privilege default user has access to all tools and credentials
+- Constrained sudo access for package installation and service management
 
 ## Technical Architecture
 
@@ -69,8 +70,8 @@ required:
 
 #### System-Wide Tool Installation
 
-All tools must be accessible to the unprivileged default user. Installation
-locations:
+All tools must be accessible to the limited-privilege default user.
+Installation locations:
 
 1. **Go**: `/usr/local/go/` with `/usr/local/go/bin` in PATH
 2. **uv**: `/usr/local/bin/uv` and `/usr/local/bin/uvx`

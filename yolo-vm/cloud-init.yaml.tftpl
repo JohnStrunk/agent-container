@@ -21,6 +21,15 @@ users:
   - name: ${default_user}
     uid: ${user_uid}
     shell: /bin/bash
+    # Constrained sudo access for AI coding agent
+    # - apt-get/apt/dpkg: Install system packages and development dependencies
+    # - systemctl: Manage services during development (restart nginx, databases, etc.)
+    # Note: User already has docker/libvirt/kvm group access, no sudo needed for those
+    sudo:
+      - "ALL=(ALL) NOPASSWD: /usr/bin/apt-get"
+      - "ALL=(ALL) NOPASSWD: /usr/bin/apt"
+      - "ALL=(ALL) NOPASSWD: /usr/bin/dpkg"
+      - "ALL=(ALL) NOPASSWD: /usr/bin/systemctl"
     ssh_authorized_keys:
 %{ for key in ssh_keys ~}
       - ${key}
