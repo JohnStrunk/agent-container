@@ -18,8 +18,10 @@ function initial_setup() {
 
 cd "${HOME}/workspace"
 
-if [ ! -d "${HOME}/.claude" ]; then  # 1st run
+if [ ! -f "${HOME}/.claude/.setup-complete" ]; then  # 1st run
+    mkdir -p "${HOME}/.claude"
     initial_setup
+    touch "${HOME}/.claude/.setup-complete"
 else
     claude plugin marketplace update
 fi
