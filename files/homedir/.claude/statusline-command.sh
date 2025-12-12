@@ -20,7 +20,7 @@ total_tokens=$((total_input + total_output))
 ctx_percent=$(echo "scale=0; $total_tokens * 100 / $context_size" | bc)
 
 # Get git status
-git_info="git - none"
+git_info="git: none"
 if git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1; then
     branch=$(git -C "$cwd" branch --show-current 2>/dev/null || echo "detached")
 
@@ -40,9 +40,9 @@ if git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1; then
     [ "$count_untracked" -gt 0 ] && status_parts="${status_parts} ??:$count_untracked"
 
     if [ -n "$status_parts" ]; then
-        git_info="git - $branch -${status_parts}"
+        git_info="git: $branch -${status_parts}"
     else
-        git_info="git - $branch - clean"
+        git_info="git: $branch - clean"
     fi
 fi
 
