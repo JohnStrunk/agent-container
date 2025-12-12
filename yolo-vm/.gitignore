@@ -28,3 +28,4 @@ vm-ssh-key.pub
 *service_account*.json
 gcp-credentials.json
 application_default_credentials.json
+/.claude/
