@@ -1,4 +1,5 @@
 #!/bin/bash
+# https://code.claude.com/docs/en/statusline
 # Claude Code status line: cost | context usage | git status
 
 set -e -o pipefail
@@ -6,18 +7,28 @@ set -e -o pipefail
 # Read JSON input from stdin
 input=$(cat)
 
-# Extract token counts and context window size
-total_input=$(echo "$input" | jq -r '.context_window.total_input_tokens')
-total_output=$(echo "$input" | jq -r '.context_window.total_output_tokens')
+# Extract context usage and other info
 context_size=$(echo "$input" | jq -r '.context_window.context_window_size')
 cwd=$(echo "$input" | jq -r '.workspace.current_dir')
 
 raw_cost=$(echo "$input" | jq -r '.cost.total_cost_usd')
 cost=$(echo "scale=2; $raw_cost * 1" | bc)
 
-# Calculate context window percentage
-total_tokens=$((total_input + total_output))
-ctx_percent=$(echo "scale=0; $total_tokens * 100 / $context_size" | bc)
+# Calculate total current usage by summing all token fields
+current_usage=$(echo "$input" | jq '
+  .context_window.current_usage |
+  (.input_tokens // 0) +
+  (.output_tokens // 0) +
+  (.cache_creation_input_tokens // 0) +
+  (.cache_read_input_tokens // 0)
+')
+
+# Calculate context window percentage from current_usage
+if [ -n "$current_usage" ] && [ "$current_usage" != "null" ]; then
+    ctx_percent=$(echo "scale=0; $current_usage * 100 / $context_size" | bc)
+else
+    ctx_percent="N/A"
+fi
 
 # Get git status
 git_info="git: none"
