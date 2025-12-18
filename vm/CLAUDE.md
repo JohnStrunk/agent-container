@@ -1,0 +1,167 @@
+# Claude Code Assistant Configuration - VM Approach
+
+**[← Back to root CLAUDE.md](../CLAUDE.md)**
+
+## Project Overview
+
+This is the **VM approach** - a Terraform-based deployment of a Debian 13
+virtual machine with AI coding agents, using libvirt/KVM for full isolation.
+
+## Project Structure
+
+```text
+vm/
+├── main.tf                    # Main Terraform configuration
+├── variables.tf               # Variable definitions
+├── outputs.tf                 # Output definitions
+├── cloud-init.yaml.tftpl      # Cloud-init template
+├── vm-*.sh                    # VM utility scripts
+├── libvirt-nat-fix.sh         # Network fix for multi-interface hosts
+├── README.md                  # VM documentation
+└── CLAUDE.md                  # This file
+
+../common/
+├── homedir/                   # Shared configs (deployed to VM)
+└── packages/                  # Package lists (used in cloud-init)
+```
+
+## Key Technologies & Tools
+
+- **Infrastructure**: Terraform, libvirt/KVM, cloud-init
+- **VM OS**: Debian 13 (Trixie)
+- **AI Agents**: Claude Code, Gemini CLI, GitHub Copilot
+- **Development Tools**: Git, Node.js, Python, Go, Docker, Terraform
+
+## Development Workflow
+
+### Task Management
+
+Use TodoWrite tool for complex tasks to track progress.
+
+### Pre-commit Quality Checks
+
+Run pre-commit after making changes:
+
+```bash
+pre-commit run --files <filename>
+```
+
+### Testing VM Changes
+
+After modifying Terraform or cloud-init:
+
+1. **Validate Terraform**:
+
+   ```bash
+   cd /home/user/workspace/vm
+   terraform fmt
+   terraform validate
+   ```
+
+2. **Plan changes**:
+
+   ```bash
+   terraform plan
+   ```
+
+3. **Apply if safe**:
+
+   ```bash
+   terraform apply
+   ```
+
+4. **Test VM connectivity**:
+
+   ```bash
+   ./vm-connect.sh
+   ```
+
+### Modifying Package Lists
+
+To add/remove packages:
+
+1. Edit `../common/packages/*.txt` files
+2. Run `terraform plan` to see changes
+3. Apply and verify packages install correctly in cloud-init
+
+### Modifying Homedir Configs
+
+To change deployed configurations:
+
+1. Edit files in `../common/homedir/`
+2. Run `terraform plan` to see changes
+3. Recreate VM or manually copy updated files
+
+## File Modification Guidelines
+
+### Terraform Files
+
+- Follow terraform formatting: `terraform fmt`
+- Validate syntax: `terraform validate`
+- Test with `terraform plan` before apply
+- Use locals for computed values
+- Comment complex logic
+
+### Cloud-Init Templates
+
+- Follow YAML syntax
+- Test template rendering with small changes first
+- Use Terraform variables for dynamic content
+- Comment runcmd sections for clarity
+
+### Shell Scripts
+
+- Use `#!/bin/bash` shebang
+- Include `set -e -o pipefail`
+- Pass shellcheck (via pre-commit)
+- Use double quotes for variables
+
+## Common Tasks
+
+### Adding Packages
+
+1. **Plan**: Create todo for editing package list
+2. Edit `../common/packages/apt-packages.txt` (or npm/python)
+3. Run `terraform plan` to verify template updates
+4. **Test**: Apply and verify package installs
+5. Commit changes
+
+### Modifying VM Configuration
+
+1. **Plan**: Create todos for configuration changes
+2. Edit `main.tf` or `variables.tf`
+3. Run `terraform fmt` and `terraform validate`
+4. **Test**: Run `terraform plan` to preview
+5. Apply if safe, test VM functionality
+6. Commit changes
+
+### Updating Cloud-Init
+
+1. **Plan**: Create todos for cloud-init changes
+2. Edit `cloud-init.yaml.tftpl`
+3. Run `terraform validate`
+4. **Test**: Apply to new/test VM first
+5. Verify with `ssh debian@<vm-ip>` and check installed software
+6. Commit changes
+
+## Testing Strategy
+
+1. **Terraform validation**: `terraform fmt && terraform validate`
+2. **Plan review**: Always run `terraform plan` before apply
+3. **Incremental testing**: Test small changes before large refactors
+4. **VM verification**: SSH in and verify expected state
+5. **Pre-commit checks**: Run on all modified files
+
+## Security Considerations
+
+- SSH keys managed in `ssh-keys/` directory (not in repo)
+- GCP credentials injected via Terraform variables (not stored)
+- Constrained sudo access for AI agents
+- Root access via SSH key only (no password)
+
+## Maintenance Notes
+
+- Pre-commit hooks ensure code quality
+- Terraform state managed locally (consider remote backend for teams)
+- VM lifecycle managed by Terraform (create/destroy)
+- Cloud-init runs once at VM creation
