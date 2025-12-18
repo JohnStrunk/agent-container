@@ -11,8 +11,7 @@ input=$(cat)
 context_size=$(echo "$input" | jq -r '.context_window.context_window_size')
 cwd=$(echo "$input" | jq -r '.workspace.current_dir')
 
-raw_cost=$(echo "$input" | jq -r '.cost.total_cost_usd')
-cost=$(echo "scale=2; $raw_cost * 1" | bc)
+cost=$(echo "$input" | jq -r '.cost.total_cost_usd')
 
 # Calculate total current usage by summing all token fields
 current_usage=$(echo "$input" | jq '
@@ -25,7 +24,7 @@ current_usage=$(echo "$input" | jq '
 
 # Calculate context window percentage from current_usage
 if [ -n "$current_usage" ] && [ "$current_usage" != "null" ]; then
-    ctx_percent=$(echo "scale=0; $current_usage * 100 / $context_size" | bc)
+    ctx_percent=$((current_usage * 100 / context_size))
 else
     ctx_percent="N/A"
 fi
