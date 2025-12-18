@@ -71,8 +71,8 @@ RUN --mount=type=cache,target=/root/.npm \
 # These will be copied to user home by entrypoint.sh
 COPY --chown=0:0 --chmod=u=rw,u+X,go=r,go+X ../common/homedir/ /etc/skel/
 
-COPY entrypoint.sh /entrypoint.sh
+COPY container/entrypoint.sh /entrypoint.sh
 RUN chmod a+rx /entrypoint.sh
-COPY entrypoint_user.sh /entrypoint_user.sh
+COPY container/entrypoint_user.sh /entrypoint_user.sh
 RUN chmod a+rx /entrypoint_user.sh
 ENTRYPOINT ["/entrypoint.sh"]
