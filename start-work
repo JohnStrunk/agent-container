@@ -192,12 +192,6 @@ docker run --rm -it \
     -e CLAUDE_CODE_USE_VERTEX \
     ghcr.io/johnstrunk/agent-container:latest "${CONTAINER_COMMAND[@]}"
 
-# If .cloude/settings.local.json exists in the worktree, display its contents
-if [[ -f "$WORKTREE_DIR/.claude/settings.local.json" ]]; then
-    echo -e "\n\n=== .claude/settings.local.json: ==="
-    jq -r . "$WORKTREE_DIR/.claude/settings.local.json"
-fi
-
 # Remove the worktree after exiting the container
 if [[ "$USE_GIT" == 1 ]]; then
     git worktree remove "$WORKTREE_DIR" || echo "Not removing worktree $(basename "$WORKTREE_DIR"), it may still be in use."
