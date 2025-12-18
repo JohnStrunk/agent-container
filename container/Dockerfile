@@ -27,6 +27,7 @@ COPY ../common/packages/python-packages.txt /tmp/python-packages.txt
 COPY ../common/packages/versions.txt /tmp/versions.txt
 
 # hadolint ignore=DL3008
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
     apt-get update && \
