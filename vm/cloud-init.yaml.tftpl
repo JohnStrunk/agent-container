@@ -112,8 +112,8 @@ runcmd:
     EOF
   - chmod 644 /etc/profile.d/gcp-ai-agent.sh
 %{ endif ~}
-  # Install Go 1.25.0
-  - curl -fsSL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz -o /tmp/go.tar.gz
+  # Install Go ${golang_version}
+  - curl -fsSL https://go.dev/dl/go${golang_version}.linux-amd64.tar.gz -o /tmp/go.tar.gz
   - tar -C /usr/local -xzf /tmp/go.tar.gz
   - rm -f /tmp/go.tar.gz
   # Install HashiCorp repository and Terraform
@@ -126,15 +126,13 @@ runcmd:
   - mv /root/.local/bin/uv /usr/local/bin/uv
   - mv /root/.local/bin/uvx /usr/local/bin/uvx
   # Install Python tools system-wide
-  - pip install --break-system-packages pre-commit poetry pipenv 'dvc[all]'
+  - pip install --break-system-packages ${python_packages}
   # Install hadolint for Dockerfile linting
-  - curl -fsSL https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64 -o /tmp/hadolint
+  - curl -fsSL https://github.com/hadolint/hadolint/releases/download/v${hadolint_version}/hadolint-Linux-x86_64 -o /tmp/hadolint
   - install /tmp/hadolint /usr/local/bin/hadolint
   - rm -f /tmp/hadolint
   # Install AI coding agents globally
-  - npm install -g @anthropic-ai/claude-code@latest
-  - npm install -g @google/gemini-cli@latest
-  - npm install -g @github/copilot@latest
+  - npm install -g ${npm_packages}
 
   # Copy all files from /tmp/homedir to user's home directory
   - cp -r /tmp/homedir/. /home/${default_user}/
@@ -151,32 +149,20 @@ package_update: true
 package_upgrade: true
 
 packages:
-  # Base utilities
-  - vim
-  - curl
-  - wget
-  - git
-  - htop
-  - rsync
-  # Agent environment packages
-  - nodejs
-  - npm
-  - python3
-  - python3-pip
+%{ for pkg in split("\n", apt_packages) ~}
+%{ if pkg != "" && !startswith(pkg, "#") ~}
+  - ${pkg}
+%{ endif ~}
+%{ endfor ~}
+  # VM-specific packages for nested virtualization
   - docker.io
-  - jq
-  - yq
-  - ripgrep
-  - gosu
-  - ca-certificates
-  - unzip
-  - shellcheck
-  # Virtualization support for nested VMs
   - qemu-system-x86
   - qemu-guest-agent
   - libvirt-daemon-system
   - libvirt-clients
   - virtinst
   - bridge-utils
+  - wget
+  - htop
 
 final_message: "System boot complete. Console auto-login enabled for root."
