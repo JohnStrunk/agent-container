@@ -40,33 +40,8 @@ resource "local_file" "ssh_public_key" {
 }
 
 locals {
-  # Use dynamically generated SSH public key
   ssh_keys = [tls_private_key.vm_ssh_key.public_key_openssh]
-
-  # Read GCP service account key if path is provided
   gcp_service_account_key = var.gcp_service_account_key_path != "" ? file(var.gcp_service_account_key_path) : ""
-
-  # Read all files from homedir recursively and create a map
-  # The map key is the relative path within homedir, value is file content
-  homedir_files = {
-    for f in fileset("${path.module}/../common/homedir", "**") :
-    f => {
-      content     = file("${path.module}/../common/homedir/${f}")
-      permissions = can(regex("^[^.]*$", basename(f))) && !can(regex("\\.", basename(f))) ? "0755" : "0644"
-    }
-  }
-
-  # Read package lists from common/ directory
-  apt_packages    = trimspace(file("${path.module}/../common/packages/apt-packages.txt"))
-  npm_packages    = trimspace(file("${path.module}/../common/packages/npm-packages.txt"))
-  python_packages = trimspace(file("${path.module}/../common/packages/python-packages.txt"))
-
-  # Read version information
-  versions = {
-    for line in split("\n", trimspace(file("${path.module}/../common/packages/versions.txt"))) :
-    split("=", line)[0] => split("=", line)[1]
-    if length(regexall("^[A-Z_]+=", line)) > 0
-  }
 }
 
 # Create default NAT network
@@ -147,12 +122,6 @@ resource "libvirt_cloudinit_disk" "cloud_init" {
     gcp_service_account_key = local.gcp_service_account_key
     vertex_project_id       = var.vertex_project_id
     vertex_region           = var.vertex_region
-    homedir_files           = local.homedir_files
-    apt_packages            = local.apt_packages
-    npm_packages            = local.npm_packages
-    python_packages         = local.python_packages
-    golang_version          = local.versions["GOLANG_VERSION"]
-    hadolint_version        = local.versions["HADOLINT_VERSION"]
   })
 
   meta_data = <<-EOF
