@@ -1,75 +1,145 @@
-#! /bin/bash
-
+#!/bin/bash
 set -e -o pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-
-# Get current user's UID and GID to match permissions with host
-USER_UID=$(id -u)
-USER_GID=$(id -g)
-
-# Auto-detect GCP credentials (same as container version)
+IMAGE_NAME="ghcr.io/johnstrunk/agent-bootc:latest"
+BOOTC_DIR="bootc"
+TERRAFORM_DIR="terraform"
+BUILD_DIR=".build"
+QCOW2_PATH="$BUILD_DIR/disk.qcow2"
 GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
-GCP_CREDS_PATH="${GCP_CREDENTIALS_PATH:-$GCP_CREDS_DEFAULT}"
 
-# Build terraform variable arguments
-TERRAFORM_VARS=(
-  -var="user_uid=$USER_UID"
-  -var="user_gid=$USER_GID"
-)
+function usage {
+    cat - <<EOF
+$0: Launch VM from bootc image
 
-# Add GCP credentials if file exists
-if [[ -f "$GCP_CREDS_PATH" ]]; then
-  echo "Auto-detected GCP credentials from: $GCP_CREDS_PATH"
-  TERRAFORM_VARS+=(-var="gcp_service_account_key_path=$GCP_CREDS_PATH")
+Usage: $0 [options]
 
-  # Add project ID and region from environment if set
-  if [[ -n "$ANTHROPIC_VERTEX_PROJECT_ID" ]]; then
-    echo "Using Vertex AI project: $ANTHROPIC_VERTEX_PROJECT_ID"
-    TERRAFORM_VARS+=(-var="vertex_project_id=$ANTHROPIC_VERTEX_PROJECT_ID")
-  fi
+Options:
+  --gcp-credentials <path>    Path to GCP service account JSON key file
+  -h, --help                  Show this help
 
-  if [[ -n "$CLOUD_ML_REGION" ]]; then
-    echo "Using Vertex AI region: $CLOUD_ML_REGION"
-    TERRAFORM_VARS+=(-var="vertex_region=$CLOUD_ML_REGION")
-  fi
-else
-  echo "No GCP credentials found at: $GCP_CREDS_PATH"
-  echo "Claude Code in VM will use API key authentication"
-  echo "To use Vertex AI, set ANTHROPIC_VERTEX_PROJECT_ID and ensure credentials are available"
-fi
+The script will:
+1. Build bootc image if source files changed
+2. Generate qcow2 disk if bootc image updated
+3. Apply terraform to launch VM
 
-# Autodetect network subnet for nested VMs
-# If running inside a VM on 192.168.X.0/24, use a different subnet
-if [ -z "$NETWORK_SUBNET" ]; then
-  # Get the current VM's IP address (if any) on 192.168.x.x
-  CURRENT_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)192\.168\.\d+\.\d+(?=/)' | head -1)
+EOF
+}
 
-  if [ -n "$CURRENT_IP" ]; then
-    # Extract third octet from current IP
-    CURRENT_THIRD_OCTET=$(echo "$CURRENT_IP" | cut -d. -f3)
-
-    # Use different subnet: if we're on 122 or 123, use 200
-    # Otherwise use current + 1 (wrapping at 255)
-    if [ "$CURRENT_THIRD_OCTET" -eq 122 ] || [ "$CURRENT_THIRD_OCTET" -eq 123 ]; then
-      NETWORK_SUBNET=200
-      echo "Detected outer VM network: 192.168.$CURRENT_THIRD_OCTET.0/24"
-      echo "Using subnet 192.168.$NETWORK_SUBNET.0/24 for nested VM"
-    else
-      NETWORK_SUBNET=$(( (CURRENT_THIRD_OCTET + 1) % 256 ))
-      echo "Detected outer VM network: 192.168.$CURRENT_THIRD_OCTET.0/24"
-      echo "Using subnet 192.168.$NETWORK_SUBNET.0/24 for nested VM"
+# Check if bootc image needs rebuild
+needs_bootc_rebuild() {
+    if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+        echo "bootc image doesn't exist"
+        return 0
     fi
-  else
-    # Not inside a VM on 192.168.x.x, use default
-    NETWORK_SUBNET=123
-  fi
+
+    local image_created=$(docker image inspect "$IMAGE_NAME" \
+        --format '{{.Created}}' | xargs -I{} date -d {} +%s 2>/dev/null || echo 0)
+
+    local newest_source=$(find "$BOOTC_DIR" -type f -printf '%T@\n' 2>/dev/null \
+        | sort -rn | head -1 | cut -d. -f1 || echo 0)
+
+    if [ "$newest_source" -gt "$image_created" ]; then
+        echo "source files modified since last build"
+        return 0
+    fi
+
+    return 1
+}
+
+# Check if qcow2 needs rebuild
+needs_qcow2_rebuild() {
+    if [ ! -f "$QCOW2_PATH" ]; then
+        echo "qcow2 doesn't exist"
+        return 0
+    fi
+
+    local qcow2_time=$(stat -c %Y "$QCOW2_PATH")
+
+    local image_created=$(docker image inspect "$IMAGE_NAME" \
+        --format '{{.Created}}' | xargs -I{} date -d {} +%s 2>/dev/null || echo 0)
+
+    if [ "$image_created" -gt "$qcow2_time" ]; then
+        echo "bootc image updated"
+        return 0
+    fi
+
+    return 1
+}
+
+# Parse arguments
+GCP_CREDS_PATH=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --gcp-credentials)
+            GCP_CREDS_PATH="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+# Create build directory
+mkdir -p "$BUILD_DIR"
+
+# Step 1: Build bootc image if needed
+if needs_bootc_rebuild; then
+    echo "Building bootc image..."
+    docker build -t "$IMAGE_NAME" -f "$BOOTC_DIR/Containerfile" "$BOOTC_DIR/"
+    # Force qcow2 rebuild since image changed
+    rm -f "$QCOW2_PATH"
 fi
 
-TERRAFORM_VARS+=(-var="network_subnet_third_octet=$NETWORK_SUBNET")
+# Step 2: Generate qcow2 if needed
+if needs_qcow2_rebuild; then
+    echo "Generating VM disk image from bootc container..."
+    docker run --rm --privileged \
+        -v "$PWD/$BUILD_DIR:/output" \
+        --security-opt label=disable \
+        quay.io/centos-bootc/bootc-image-builder:latest \
+        --type qcow2 \
+        --output /output \
+        "$IMAGE_NAME"
 
-terraform apply --auto-approve "${TERRAFORM_VARS[@]}"
+    # bootc-image-builder outputs to qcow2/disk.qcow2
+    mv "$BUILD_DIR/qcow2/disk.qcow2" "$QCOW2_PATH"
+    rm -rf "$BUILD_DIR/qcow2"
+    echo "VM disk image created at $QCOW2_PATH"
+fi
 
-VM_IP=$(terraform output -raw vm_ip)
-ssh-keygen -R "$VM_IP"
+# Step 3: Prepare terraform variables
+cd "$TERRAFORM_DIR"
+
+# Handle GCP credentials
+if [[ -z "$GCP_CREDS_PATH" ]]; then
+    GCP_CREDS_PATH="$GCP_CREDS_DEFAULT"
+fi
+
+TFVARS=""
+if [[ -f "$GCP_CREDS_PATH" ]]; then
+    echo "Using GCP credentials from: $GCP_CREDS_PATH"
+    TFVARS="-var gcp_service_account_key_path=$GCP_CREDS_PATH"
+fi
+
+# Step 4: Apply terraform
+echo "Checking terraform plan..."
+if ! terraform plan -detailed-exitcode $TFVARS > /dev/null 2>&1; then
+    echo "Applying terraform changes..."
+    terraform apply -auto-approve $TFVARS
+else
+    echo "No terraform changes needed, VM already up-to-date"
+fi
+
+cd ..
+
+echo ""
+echo "VM ready! Connect with: ./vm-connect.sh"
