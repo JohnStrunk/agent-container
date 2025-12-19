@@ -1,8 +1,9 @@
 #! /bin/bash
 set -e -o pipefail
 
-EUID="${EUID:-1000}"
-EGID="${EGID:-1000}"
+# Use different variable names to avoid conflict with readonly bash builtins
+TARGET_UID="${EUID:-1000}"
+TARGET_GID="${EGID:-1000}"
 USERNAME="${USER:-user}"
 GROUPNAME="${USERNAME}"
 
@@ -14,8 +15,8 @@ fi
 HOMEDIR="${HOME:-/home/$USERNAME}"
 # Ensure parent directories exist
 mkdir -p "$(dirname "$HOMEDIR")"
-groupadd -g "$EGID" "$GROUPNAME" || true
-useradd -o -u "$EUID" -g "$EGID" -d "$HOMEDIR" "$USERNAME"
+groupadd -g "$TARGET_GID" "$GROUPNAME" || true
+useradd -o -u "$TARGET_UID" -g "$TARGET_GID" -d "$HOMEDIR" "$USERNAME"
 mkdir -p "$HOMEDIR"
 chown "$USERNAME":"$GROUPNAME" "$HOMEDIR"
 

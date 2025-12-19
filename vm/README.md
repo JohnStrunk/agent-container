@@ -1,7 +1,9 @@
-# Debian 13 (Trixie) VM with Libvirt
+# VM Approach - Debian AI Development VM
 
-This directory contains Terraform configuration to deploy a Debian 13
-(Trixie) virtual machine using libvirt/KVM with automated provisioning.
+Terraform configuration for deploying a Debian 13 virtual machine with AI
+coding agents using libvirt/KVM.
+
+**[← Back to main documentation](../README.md)**
 
 ## Features
 
@@ -16,6 +18,17 @@ This directory contains Terraform configuration to deploy a Debian 13
   copilot
 - **Vertex AI Integration**: Optional Google Cloud Vertex AI
   authentication
+
+## Package Management
+
+This VM uses shared package lists from `../common/packages/`:
+
+- `apt-packages.txt` - Debian packages installed via cloud-init
+- `npm-packages.txt` - Global npm packages (AI agents)
+- `python-packages.txt` - Python tools (pre-commit, poetry, etc.)
+- `versions.txt` - Version pins for Go, hadolint, etc.
+
+Packages are automatically installed during VM provisioning via cloud-init.
 
 ## Prerequisites
 
@@ -50,7 +63,7 @@ cp ~/.ssh/id_ed25519.pub ssh-keys/mykey.pub
 ### 2. Initialize Terraform
 
 ```bash
-cd yolo-vm
+cd vm
 terraform init
 ```
 
@@ -383,15 +396,15 @@ terraform apply -var="network_subnet_third_octet=150"
 
 ```bash
 # 1. On host: Create outer VM (uses 192.168.123.0/24 by default)
-cd yolo-vm
+cd vm
 ./vm-up.sh
 ssh user@<OUTER_VM_IP>
 
 # 2. Inside outer VM: Create inner VM (automatically uses different
 # subnet)
 cd ~/workspace
-git clone <your-repo-with-yolo-vm>
-cd yolo-vm
+git clone <your-repo-with-vm>
+cd vm
 ./vm-up.sh  # Autodetects outer VM on 192.168.123.x, uses
 192.168.200.0/24
 ssh user@<INNER_VM_IP>
@@ -542,17 +555,21 @@ For production use, consider:
 ## File Structure
 
 ```text
-yolo-vm/
+vm/
 ├── README.md              # This file
-├── design-vm.md           # Design document
 ├── main.tf                # Terraform resources
 ├── variables.tf           # Input variables
 ├── outputs.tf             # Output values
 ├── cloud-init.yaml.tftpl  # Cloud-init template
-├── .gitignore             # Git ignore rules
+├── vm-*.sh                # VM helper scripts
+├── libvirt-nat-fix.sh     # Network fix script
 └── ssh-keys/              # SSH public keys
     ├── README.md          # SSH keys documentation
     └── *.pub              # Your public keys
+
+../common/
+├── homedir/               # Shared configs (deployed to VM)
+└── packages/              # Package lists (used in cloud-init)
 ```
 
 ## References

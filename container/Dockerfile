@@ -19,43 +19,19 @@ RUN sed -i 's/^UID_MIN.*/UID_MIN 1000/' /etc/login.defs && \
 
 # Install base system packages (debian-native tools)
 RUN rm -f /etc/apt/apt.conf.d/docker-clean
+
+# Copy package lists for installation
+COPY ../common/packages/apt-packages.txt /tmp/apt-packages.txt
+COPY ../common/packages/npm-packages.txt /tmp/npm-packages.txt
+COPY ../common/packages/python-packages.txt /tmp/python-packages.txt
+COPY ../common/packages/versions.txt /tmp/versions.txt
+
 # hadolint ignore=DL3008
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
     apt-get update && \
-    apt-get install -y --no-install-recommends \
-    bc \
-    ca-certificates \
-    curl \
-    docker-cli \
-    dnsutils \
-    findutils \
-    g++ \
-    gh \
-    git \
-    gnupg \
-    gosu \
-    jq \
-    less \
-    lsb-release \
-    lsof \
-    make \
-    man-db \
-    nodejs \
-    npm \
-    procps \
-    psmisc \
-    python3 \
-    python3-pip \
-    ripgrep \
-    rsync \
-    shellcheck \
-    socat \
-    tcl \
-    tk \
-    unzip \
-    vim \
-    yq
+    grep -v '^#' /tmp/apt-packages.txt | grep -v '^$' | xargs apt-get install -y --no-install-recommends
 
 # Install HashiCorp repository and terraform (separate layer for better caching)
 # hadolint ignore=DL3008
@@ -75,6 +51,7 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 
 # Install hadolint
 ARG HADOLINT_VERSION=2.12.0
+# Note: Version sourced from versions.txt, but ARG defaults kept for compatibility
 RUN curl -fsSLo /tmp/hadolint https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64 && \
     install /tmp/hadolint /usr/local/bin && \
     rm -f /tmp/hadolint
@@ -83,26 +60,19 @@ RUN curl -fsSLo /tmp/hadolint https://github.com/hadolint/hadolint/releases/down
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # hadolint ignore=DL3013,DL3042
 RUN --mount=type=cache,target=/root/.cache/pip \
-    echo "Installing Python tools globally..." && \
-    for tool in $(echo "$PYTHON_TOOLS" | tr ',' ' '); do \
-    echo "Installing $tool..." && \
-    pip install --cache-dir=/root/.cache/pip --break-system-packages "$tool"; \
-    done && \
-    echo "Python tools installation complete"
+    grep -v '^#' /tmp/python-packages.txt | grep -v '^$' | xargs pip install --break-system-packages
 
 # Install coding agents with npm cache mount
 # hadolint ignore=DL3016
 RUN --mount=type=cache,target=/root/.npm \
-    npm install -g --cache /root/.npm \
-    @anthropic-ai/claude-code@latest \
-    @google/gemini-cli@latest
+    xargs npm install -g --cache /root/.npm < /tmp/npm-packages.txt
 
 # Copy default configuration files to /etc/skel/
 # These will be copied to user home by entrypoint.sh
-COPY --chown=0:0 --chmod=u=rw,u+X,go=r,go+X files/homedir/ /etc/skel/
+COPY --chown=0:0 --chmod=u=rw,u+X,go=r,go+X ../common/homedir/ /etc/skel/
 
-COPY entrypoint.sh /entrypoint.sh
+COPY container/entrypoint.sh /entrypoint.sh
 RUN chmod a+rx /entrypoint.sh
-COPY entrypoint_user.sh /entrypoint_user.sh
+COPY container/entrypoint_user.sh /entrypoint_user.sh
 RUN chmod a+rx /entrypoint_user.sh
 ENTRYPOINT ["/entrypoint.sh"]
