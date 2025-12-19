@@ -2,8 +2,7 @@
 bc
 ca-certificates
 curl
-docker-cli
-dnsutils
+bind9-dnsutils
 findutils
 g++
 gh
