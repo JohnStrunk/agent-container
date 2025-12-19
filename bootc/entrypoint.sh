@@ -5,10 +5,10 @@ set -e -o pipefail
 # It creates a user matching the host UID/GID for file permission compatibility
 
 # Default values
-TARGET_UID="${EUID:-1000}"
-TARGET_GID="${EGID:-1000}"
-TARGET_USER="${USER:-user}"
-TARGET_HOME="${HOME:-/home/$TARGET_USER}"
+TARGET_UID="${CONTAINER_UID:-${EUID:-1000}}"
+TARGET_GID="${CONTAINER_GID:-${EGID:-1000}}"
+TARGET_USER="${CONTAINER_USER:-${USER:-user}}"
+TARGET_HOME="${CONTAINER_HOME:-${HOME:-/home/$TARGET_USER}}"
 
 # Create group if it doesn't exist
 if ! getent group "$TARGET_GID" > /dev/null 2>&1; then
