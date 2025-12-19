@@ -51,6 +51,18 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     mv /root/.local/bin/uv /usr/local/bin/uv && \
     mv /root/.local/bin/uvx /usr/local/bin/uvx
 
+# Install virtualization packages for VM mode
+RUN dnf install -y \
+    # Container runtime
+    moby-engine \
+    # QEMU and KVM
+    qemu-kvm qemu-guest-agent \
+    # libvirt
+    libvirt libvirt-daemon-kvm libvirt-daemon-config-network \
+    # Virtualization tools
+    virt-install bridge-utils \
+    && dnf clean all
+
 # Install Go
 RUN curl -fsSL https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz -o /tmp/go.tar.gz && \
     tar -C /usr/local -xzf /tmp/go.tar.gz && \
