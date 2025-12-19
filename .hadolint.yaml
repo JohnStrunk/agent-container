@@ -1,0 +1,12 @@
+---
+# Hadolint configuration
+# See https://github.com/hadolint/hadolint
+
+# Ignore rules that don't apply to Fedora/bootc images
+ignored:
+  # DL3041: Don't require dnf version pinning (Fedora changes frequently)
+  - DL3041
+  # DL3013: Don't require pip version pinning (tools, not app deps)
+  - DL3013
+  # DL3016: Don't require npm version pinning (global tools)
+  - DL3016

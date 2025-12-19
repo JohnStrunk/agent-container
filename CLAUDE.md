@@ -46,12 +46,13 @@ deployed in two modes:
 
 ### Single Image, Two Modes
 
-```
+```text
 bootc/Containerfile ──> bootc image ──┬──> Container (podman run)
                                       └──> qcow2 ──> VM (libvirt)
 ```
 
 **Container mode:**
+
 - Direct podman run of bootc image
 - Git worktree workflow for isolated branches
 - Fast startup, no VM overhead
@@ -59,6 +60,7 @@ bootc/Containerfile ──> bootc image ──┬──> Container (podman run)
 - No Docker or nested virtualization
 
 **VM mode:**
+
 - Convert bootc image to qcow2 disk with bootc-image-builder
 - Launch KVM/libvirt VM via Terraform
 - Full OS with nested virtualization (host-passthrough CPU)
@@ -67,7 +69,7 @@ bootc/Containerfile ──> bootc image ──┬──> Container (podman run)
 
 ### Directory Structure
 
-```
+```text
 /
 ├── start-work              # Container mode launcher
 ├── vm-up.sh               # VM mode launcher (auto-build)
@@ -130,13 +132,14 @@ exit
 
 Scripts automatically detect changes and rebuild only what's needed:
 
-```
+```text
 bootc/Containerfile changed → rebuild bootc image → regenerate qcow2 → update VM
 terraform/*.tf changed → reapply terraform
 No changes → skip rebuilds
 ```
 
 **Change detection:**
+
 - Compares file timestamps to built artifact creation times
 - Cascading rebuilds (Containerfile → image → qcow2 → VM)
 - Terraform plan diff detection
@@ -154,6 +157,7 @@ RUN dnf install -y \
 ```
 
 **Apply:**
+
 - Container mode: `./start-work` (auto-rebuilds)
 - VM mode: `./vm-up.sh` (auto-rebuilds)
 
@@ -206,12 +210,14 @@ pre-commit run --all-files
 ### Testing Changes
 
 **Container mode:**
+
 ```bash
 ./start-work
 # Test functionality inside container
 ```
 
 **VM mode:**
+
 ```bash
 ./vm-up.sh
 ./vm-connect.sh
@@ -223,11 +229,13 @@ pre-commit run --all-files
 ### Container Mode Isolation
 
 **Agent can access:**
+
 - Workspace directory (read-write)
 - Main git repository (read-write)
 - Cache volume (shared)
 
 **Agent cannot access:**
+
 - Host filesystem outside workspace
 - Docker socket
 - Host credentials
@@ -235,11 +243,13 @@ pre-commit run --all-files
 ### VM Mode Isolation
 
 **Agent can access:**
+
 - Full VM filesystem
 - Docker inside VM
 - Nested virtualization
 
 **Agent cannot access:**
+
 - Host filesystem (use vm-dir-* for transfers)
 - Host Docker
 - Host credentials (injected via cloud-init if provided)

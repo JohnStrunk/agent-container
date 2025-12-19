@@ -33,10 +33,12 @@ needs_bootc_rebuild() {
         return 0
     fi
 
-    local image_created=$(docker image inspect "$IMAGE_NAME" \
+    local image_created
+    image_created=$(docker image inspect "$IMAGE_NAME" \
         --format '{{.Created}}' | xargs -I{} date -d {} +%s 2>/dev/null || echo 0)
 
-    local newest_source=$(find "$BOOTC_DIR" -type f -printf '%T@\n' 2>/dev/null \
+    local newest_source
+    newest_source=$(find "$BOOTC_DIR" -type f -printf '%T@\n' 2>/dev/null \
         | sort -rn | head -1 | cut -d. -f1 || echo 0)
 
     if [ "$newest_source" -gt "$image_created" ]; then
@@ -54,9 +56,11 @@ needs_qcow2_rebuild() {
         return 0
     fi
 
-    local qcow2_time=$(stat -c %Y "$QCOW2_PATH")
+    local qcow2_time
+    qcow2_time=$(stat -c %Y "$QCOW2_PATH")
 
-    local image_created=$(docker image inspect "$IMAGE_NAME" \
+    local image_created
+    image_created=$(docker image inspect "$IMAGE_NAME" \
         --format '{{.Created}}' | xargs -I{} date -d {} +%s 2>/dev/null || echo 0)
 
     if [ "$image_created" -gt "$qcow2_time" ]; then
@@ -132,9 +136,9 @@ fi
 
 # Step 4: Apply terraform
 echo "Checking terraform plan..."
-if ! terraform plan -detailed-exitcode $TFVARS > /dev/null 2>&1; then
+if ! terraform plan -detailed-exitcode "$TFVARS" > /dev/null 2>&1; then
     echo "Applying terraform changes..."
-    terraform apply -auto-approve $TFVARS
+    terraform apply -auto-approve "$TFVARS"
 else
     echo "No terraform changes needed, VM already up-to-date"
 fi

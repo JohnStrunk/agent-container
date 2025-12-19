@@ -7,11 +7,13 @@ Unified bootable container (bootc) environment for AI coding agents.
 ## Quick Start
 
 Container mode (fast):
+
 ```bash
 ./start-work -b my-branch
 ```
 
 VM mode (isolated):
+
 ```bash
 ./vm-up.sh
 ./vm-connect.sh

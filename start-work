@@ -39,11 +39,13 @@ needs_bootc_rebuild() {
     fi
 
     # Get image creation time
-    local image_created=$(docker image inspect "$IMAGE_NAME" \
+    local image_created
+    image_created=$(docker image inspect "$IMAGE_NAME" \
         --format '{{.Created}}' | xargs -I{} date -d {} +%s 2>/dev/null || echo 0)
 
     # Check if any source files are newer than image
-    local newest_source=$(find "$BOOTC_DIR" -type f -printf '%T@\n' 2>/dev/null \
+    local newest_source
+    newest_source=$(find "$BOOTC_DIR" -type f -printf '%T@\n' 2>/dev/null \
         | sort -rn | head -1 | cut -d. -f1 || echo 0)
 
     if [ "$newest_source" -gt "$image_created" ]; then

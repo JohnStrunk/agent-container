@@ -40,7 +40,7 @@ resource "local_file" "ssh_public_key" {
 }
 
 locals {
-  ssh_keys = [tls_private_key.vm_ssh_key.public_key_openssh]
+  ssh_keys                = [tls_private_key.vm_ssh_key.public_key_openssh]
   gcp_service_account_key = var.gcp_service_account_key_path != "" ? file(var.gcp_service_account_key_path) : ""
 }
 
