@@ -60,15 +60,15 @@ if ! git rev-parse --verify "$BRANCH_NAME" > /dev/null 2>&1; then
 fi
 
 # Get VM IP and user
-VM_IP=$(get_vm_ip "$SCRIPT_DIR")
-VM_USER=$(get_vm_user "$SCRIPT_DIR")
-SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
+VM_IP=$(get_vm_ip "terraform")
+VM_USER=$(get_vm_user "terraform")
+SSH_KEY="terraform/vm-ssh-key"
 
 # Check VM reachable
-check_vm_reachable "$SCRIPT_DIR" "$VM_IP" "$VM_USER"
+check_vm_reachable "terraform" "$VM_IP" "$VM_USER"
 
 # Construct remote path
-WORKSPACE_BASE=$(get_vm_workspace_path "$SCRIPT_DIR")
+WORKSPACE_BASE=$(get_vm_workspace_path "terraform")
 if [[ -z "$WORKSPACE_SUBPATH" ]]; then
   REMOTE_PATH="$WORKSPACE_BASE"
 else
@@ -77,7 +77,7 @@ fi
 
 # Initialize git repository on VM if needed
 echo "Initializing repository on VM at $REMOTE_PATH"
-vm_ssh "$SCRIPT_DIR" "$VM_USER" "$VM_IP" "mkdir -p \"$REMOTE_PATH\" && cd \"$REMOTE_PATH\" && \
+vm_ssh "terraform" "$VM_USER" "$VM_IP" "mkdir -p \"$REMOTE_PATH\" && cd \"$REMOTE_PATH\" && \
   (git rev-parse --git-dir > /dev/null 2>&1 || \
    (git init && git config receive.denyCurrentBranch updateInstead))"
 
@@ -100,7 +100,7 @@ git push "$REMOTE_NAME" "$BRANCH_NAME:$BRANCH_NAME"
 
 # Checkout branch on VM
 echo "Checking out branch on VM..."
-vm_ssh "$SCRIPT_DIR" "$VM_USER" "$VM_IP" "cd \"$REMOTE_PATH\" && git checkout \"$BRANCH_NAME\""
+vm_ssh "terraform" "$VM_USER" "$VM_IP" "cd \"$REMOTE_PATH\" && git checkout \"$BRANCH_NAME\""
 
 echo "Done! Branch '$BRANCH_NAME' pushed successfully to VM."
 echo "SSH to VM and work in: $REMOTE_PATH"

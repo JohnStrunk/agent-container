@@ -21,8 +21,8 @@ source "$SCRIPT_DIR/vm-common.sh"
 VM_IP=$(cd terraform && terraform output -raw vm_ip)
 
 if [[ "$CONNECT_AS_ROOT" == "true" ]]; then
-  vm_ssh "$SCRIPT_DIR" "root" "$VM_IP"
+  vm_ssh "terraform" "root" "$VM_IP"
 else
   VM_USER=$(cd terraform && terraform output -raw default_user)
-  vm_ssh "$SCRIPT_DIR" "$VM_USER" "$VM_IP"
+  vm_ssh "terraform" "$VM_USER" "$VM_IP"
 fi
