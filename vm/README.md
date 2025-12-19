@@ -166,8 +166,11 @@ SSH into the VM and run:
 
 ```bash
 ./vm-connect.sh
-claude-code --help
+start-claude  # Recommended - includes MCP servers and plugins
 ```
+
+The `start-claude` helper script automatically sets up MCP servers (context7,
+docling, playwright) and plugins (superpowers) on first run.
 
 Environment variables are automatically configured:
 
@@ -281,7 +284,7 @@ git merge feature-auth
 
 # 2. SSH into VM and work with AI agent
 ./vm-connect.sh
-claude-code  # Work on the feature
+start-claude  # Work on the feature
 
 # 3. Back on host, fetch the changes
 ./vm-git-fetch feature-branch

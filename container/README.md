@@ -89,7 +89,10 @@ start-work -b existing-branch
 Once in the container, you can use:
 
 ```bash
-# Start Claude Code
+# Start Claude Code (recommended - includes MCP servers and plugins)
+start-claude
+
+# Or use claude directly
 claude
 
 # Start Gemini CLI
