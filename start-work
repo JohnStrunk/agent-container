@@ -33,13 +33,13 @@ EOF
 # Check if bootc image needs rebuild
 needs_bootc_rebuild() {
     # No image exists
-    if ! podman image exists "$IMAGE_NAME"; then
+    if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
         echo "bootc image doesn't exist"
         return 0
     fi
 
     # Get image creation time
-    local image_created=$(podman image inspect "$IMAGE_NAME" \
+    local image_created=$(docker image inspect "$IMAGE_NAME" \
         --format '{{.Created}}' | xargs -I{} date -d {} +%s 2>/dev/null || echo 0)
 
     # Check if any source files are newer than image
@@ -57,7 +57,7 @@ needs_bootc_rebuild() {
 # Build bootc image if needed
 build_bootc_image() {
     echo "Building bootc image from $BOOTC_DIR..."
-    podman build -t "$IMAGE_NAME" -f "$BOOTC_DIR/Containerfile" "$BOOTC_DIR/"
+    docker build -t "$IMAGE_NAME" -f "$BOOTC_DIR/Containerfile" "$BOOTC_DIR/"
 }
 
 # Parse command line options
@@ -164,7 +164,7 @@ else
     echo "Starting bootc container on $WORKTREE_DIR..."
 fi
 
-podman run --rm -it \
+docker run --rm -it \
     --name "$CONTAINER_NAME" \
     --hostname "$CONTAINER_NAME" \
     "${MOUNT_ARGS[@]}" \

@@ -4,6 +4,10 @@ FROM quay.io/fedora/fedora-bootc:43
 ARG GOLANG_VERSION=1.25.0
 ARG HADOLINT_VERSION=2.12.0
 
+# Allow higher UID/GID range for useradd
+RUN sed -i 's/^UID_MIN.*/UID_MIN 1000/' /etc/login.defs && \
+    sed -i 's/^UID_MAX.*/UID_MAX 200000/' /etc/login.defs
+
 # Install base development packages
 RUN dnf install -y \
     # Version control and basics
@@ -66,7 +70,7 @@ RUN curl -fsSL https://rpm.releases.hashicorp.com/fedora/hashicorp.repo -o /etc/
 # Install AI coding agents
 RUN npm install -g \
     @anthropic-ai/claude-code \
-    @google/generative-ai-cli
+    @google/gemini-cli
 
 # Copy homedir configs to /etc/skel/
 COPY --chown=0:0 --chmod=u=rw,u+X,go=r,go+X homedir/ /etc/skel/

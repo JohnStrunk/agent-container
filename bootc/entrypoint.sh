@@ -17,7 +17,7 @@ fi
 
 # Create user if it doesn't exist
 if ! id "$TARGET_USER" > /dev/null 2>&1; then
-    useradd -u "$TARGET_UID" -g "$TARGET_GID" -d "$TARGET_HOME" -s /bin/bash -m "$TARGET_USER"
+    useradd -u "$TARGET_UID" -g "$TARGET_GID" -d "$TARGET_HOME" -s /bin/bash -M "$TARGET_USER" 2>/dev/null || true
 fi
 
 # Copy skeleton files to user home if not already present
