@@ -46,16 +46,17 @@ RUN pip install --no-cache-dir --break-system-packages \
     pre-commit \
     ruff
 
+# Fix /root dangling symlink in bootc base image
+RUN rm -f /root && mkdir -p /root && chmod 755 /root
+
 # Install uv for Python package management
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
-    mv /root/.local/bin/uv /usr/local/bin/uv && \
-    mv /root/.local/bin/uvx /usr/local/bin/uvx
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
 
 # Install virtualization packages for VM mode
 RUN dnf install -y \
-    # Container runtime
-    moby-engine \
+    # Container runtimes
+    moby-engine podman \
     # QEMU and KVM
     qemu-kvm qemu-guest-agent \
     # libvirt
