@@ -96,9 +96,9 @@ resource "libvirt_network" "default" {
   ]
 }
 
-# Download Debian cloud image
-resource "libvirt_volume" "debian_base" {
-  name = "debian-13-base.qcow2"
+# Use bootc-generated qcow2 as base image
+resource "libvirt_volume" "bootc_base" {
+  name = "bootc-base.qcow2"
   pool = "default"
 
   target = {
@@ -109,7 +109,7 @@ resource "libvirt_volume" "debian_base" {
 
   create = {
     content = {
-      url = var.debian_image_url
+      url = "file://${abspath(path.module)}/../.build/disk.qcow2"
     }
   }
 }
@@ -127,7 +127,7 @@ resource "libvirt_volume" "debian_disk" {
   }
 
   backing_store = {
-    path = libvirt_volume.debian_base.path
+    path = libvirt_volume.bootc_base.path
     format = {
       type = "qcow2"
     }
