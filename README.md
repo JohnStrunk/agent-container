@@ -24,7 +24,7 @@ Fast, lightweight isolation using Docker containers.
 
 ```bash
 cd container
-./start-work my-feature-branch
+./start-work -b my-feature-branch
 ```
 
 ### VM Approach
@@ -35,8 +35,7 @@ Full virtual machine isolation with nested virtualization support.
 
 ```bash
 cd vm
-terraform init
-terraform apply
+./vm-up.sh
 ```
 
 ## What's Inside
