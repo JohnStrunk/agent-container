@@ -1,0 +1,74 @@
+FROM quay.io/fedora/fedora-bootc:43
+
+# Version arguments
+ARG GOLANG_VERSION=1.25.0
+ARG HADOLINT_VERSION=2.12.0
+
+# Install base development packages
+RUN dnf install -y \
+    # Version control and basics
+    git curl wget ca-certificates \
+    # Build tools
+    gcc gcc-c++ make cmake \
+    # CLI tools
+    ripgrep jq yq fzf \
+    # Shell and utilities
+    bash-completion vim-enhanced \
+    # Process management
+    procps-ng findutils \
+    # Security
+    gnupg2 \
+    && dnf clean all
+
+# Install Node.js and npm
+RUN dnf install -y \
+    nodejs npm \
+    && dnf clean all
+
+# Install Python and tools
+RUN dnf install -y \
+    python3 python3-pip python3-devel \
+    && dnf clean all
+
+# Install Python tools globally
+RUN pip install --break-system-packages \
+    pipenv \
+    poetry \
+    pre-commit \
+    ruff
+
+# Install uv for Python package management
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    mv /root/.local/bin/uv /usr/local/bin/uv && \
+    mv /root/.local/bin/uvx /usr/local/bin/uvx
+
+# Install Go
+RUN curl -fsSL https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz -o /tmp/go.tar.gz && \
+    tar -C /usr/local -xzf /tmp/go.tar.gz && \
+    rm -f /tmp/go.tar.gz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Install hadolint
+RUN curl -fsSL https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64 -o /tmp/hadolint && \
+    install /tmp/hadolint /usr/local/bin/hadolint && \
+    rm -f /tmp/hadolint
+
+# Install HashiCorp repository and Terraform
+RUN curl -fsSL https://rpm.releases.hashicorp.com/fedora/hashicorp.repo -o /etc/yum.repos.d/hashicorp.repo && \
+    dnf install -y terraform && \
+    dnf clean all
+
+# Install AI coding agents
+RUN npm install -g \
+    @anthropic-ai/claude-code \
+    @google/generative-ai-cli
+
+# Copy homedir configs to /etc/skel/
+COPY --chown=0:0 --chmod=u=rw,u+X,go=r,go+X homedir/ /etc/skel/
+
+# Copy container entrypoint
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod a+rx /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["/bin/bash"]
