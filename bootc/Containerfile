@@ -20,6 +20,11 @@ RUN dnf install -y \
     gnupg2 \
     && dnf clean all
 
+# Install gosu for user switching in container mode (not in Fedora repos)
+ARG GOSU_VERSION=1.17
+RUN curl -fsSL "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-amd64" -o /usr/local/bin/gosu && \
+    chmod +x /usr/local/bin/gosu
+
 # Install Node.js and npm
 RUN dnf install -y \
     nodejs npm \
