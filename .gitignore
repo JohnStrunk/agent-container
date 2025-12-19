@@ -1,2 +1,17 @@
 .env
 /.claude/
+
+# Build artifacts
+.build/
+!.build/.gitkeep
+
+# QCOW2 disk images (bootc VM artifacts, generated in Task 12)
+*.qcow2
+
+# Terraform state (anticipatory - terraform/ subdir created in Task 8)
+terraform/.terraform/
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/.terraform.lock.hcl
+terraform/vm-ssh-key
+terraform/vm-ssh-key.pub
