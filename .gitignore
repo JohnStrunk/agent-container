@@ -15,3 +15,6 @@ terraform/terraform.tfstate.backup
 terraform/.terraform.lock.hcl
 terraform/vm-ssh-key
 terraform/vm-ssh-key.pub
+
+# Cache volumes
+agent-bootc-cache/
