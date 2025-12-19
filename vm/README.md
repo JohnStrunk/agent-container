@@ -54,32 +54,46 @@ Follow instructions at: <https://www.terraform.io/downloads>
 
 ## Quick Start
 
-### 1. Add Your SSH Key
+### 1. Deploy the VM
 
-```bash
-cp ~/.ssh/id_ed25519.pub ssh-keys/mykey.pub
-```
-
-### 2. Initialize Terraform
+The `vm-up.sh` script handles Terraform initialization and deployment:
 
 ```bash
 cd vm
-terraform init
+./vm-up.sh
 ```
 
-### 3. Review the Plan
+This script will:
+
+- Initialize Terraform (first run only)
+- Generate SSH keys automatically
+- Auto-detect GCP credentials for Vertex AI (if available)
+- Configure network settings for nested VMs (if applicable)
+- Deploy the VM
+
+### 2. Connect to the VM
+
+Use the helper script to connect via SSH:
 
 ```bash
-terraform plan
+./vm-connect.sh
 ```
 
-### 4. Deploy the VM
+**Options:**
+
+- `-r, --root`: Connect as root instead of the default user
+
+**Examples:**
 
 ```bash
-terraform apply
+# Connect as default user
+./vm-connect.sh
+
+# Connect as root
+./vm-connect.sh -r
 ```
 
-### 5. Access the VM
+### 3. Manual Access (Alternative)
 
 **Via Console (auto-login as root):**
 
@@ -92,7 +106,7 @@ virsh console debian-trixie-vm
 **Via SSH (as default user):**
 
 ```bash
-ssh debian@<VM_IP>
+ssh user@<VM_IP>
 ```
 
 **Via SSH (as root):**
@@ -115,49 +129,48 @@ The VM comes pre-installed with AI coding agents:
 - **gemini-cli**: Google's Gemini CLI
 - **copilot**: GitHub Copilot CLI
 
-### Prerequisites for Claude Code with Vertex AI
+### Using Claude Code with Vertex AI
 
-1. Create a GCP service account with Vertex AI permissions:
+**GCP credentials are auto-detected** from your default location:
 
-   ```bash
-   gcloud iam service-accounts create claude-code-agent \
-     --display-name="Claude Code Agent"
+```bash
+# Ensure you have GCP credentials set up
+gcloud auth application-default login
 
-   PROJECT="YOUR_PROJECT_ID"
-   # Service account email format: <name>@<project>.iam.gserviceaccount.com
-   SA="claude-code-agent@${PROJECT}.iam.gserviceaccount.com"
+# Set environment variables for Vertex AI
+export ANTHROPIC_VERTEX_PROJECT_ID="your-gcp-project-id"
+export CLOUD_ML_REGION="us-central1"  # Optional, defaults to us-central1
 
-   gcloud projects add-iam-policy-binding ${PROJECT} \
-     --member="serviceAccount:${SA}" \
-     --role="roles/aiplatform.user"
+# Deploy the VM (credentials will be auto-detected)
+./vm-up.sh
+```
 
-   gcloud iam service-accounts keys create \
-     ~/claude-code-sa-key.json \
-     --iam-account=${SA}
-   ```
+The `vm-up.sh` script will:
 
-2. Update `terraform.tfvars`:
+- Automatically detect GCP credentials from
+  `~/.config/gcloud/application_default_credentials.json`
+- Pass credentials and environment variables to the VM
+- Configure Claude Code for Vertex AI authentication
 
-   ```hcl
-   gcp_service_account_key_path = "~/claude-code-sa-key.json"
-   vertex_project_id = "your-gcp-project-id"
-   vertex_region = "us-central1"
-   ```
+#### Alternative: Custom credentials path
 
-3. Deploy the VM:
-
-   ```bash
-   terraform apply
-   ```
+```bash
+export GCP_CREDENTIALS_PATH="~/my-service-account.json"
+export ANTHROPIC_VERTEX_PROJECT_ID="your-gcp-project-id"
+./vm-up.sh
+```
 
 ### Running Claude Code
 
 SSH into the VM and run:
 
 ```bash
-ssh debian@<VM_IP>
-claude-code --help
+./vm-connect.sh
+start-claude  # Recommended - includes MCP servers and plugins
 ```
+
+The `start-claude` helper script automatically sets up MCP servers (context7,
+docling, playwright) and plugins (superpowers) on first run.
 
 Environment variables are automatically configured:
 
@@ -219,8 +232,8 @@ host and VM workspace:
 ./vm-dir-push <local-directory> [workspace-subpath]
 
 # Examples:
-./vm-dir-push ./my-project              # → /home/debian/workspace/
-./vm-dir-push ./my-project myapp        # → /home/debian/workspace/myapp/
+./vm-dir-push ./my-project              # → /home/user/workspace/
+./vm-dir-push ./my-project myapp        # → /home/user/workspace/myapp/
 ```
 
 **Pull directory from VM:**
@@ -229,8 +242,8 @@ host and VM workspace:
 ./vm-dir-pull <local-directory> [workspace-subpath]
 
 # Examples:
-./vm-dir-pull ./my-project              # ← /home/debian/workspace/
-./vm-dir-pull ./my-project myapp        # ← /home/debian/workspace/myapp/
+./vm-dir-pull ./my-project              # ← /home/user/workspace/
+./vm-dir-pull ./my-project myapp        # ← /home/user/workspace/myapp/
 ```
 
 ### Git Repository Sync
@@ -241,8 +254,8 @@ host and VM workspace:
 ./vm-git-push <branch-name> [workspace-subpath]
 
 # Examples:
-./vm-git-push feature-auth              # → /home/debian/workspace/
-./vm-git-push feature-auth myapp        # → /home/debian/workspace/myapp/
+./vm-git-push feature-auth              # → /home/user/workspace/
+./vm-git-push feature-auth myapp        # → /home/user/workspace/myapp/
 ```
 
 **Fetch git branch from VM:**
@@ -251,8 +264,8 @@ host and VM workspace:
 ./vm-git-fetch <branch-name> [workspace-subpath]
 
 # Examples:
-./vm-git-fetch feature-auth             # ← /home/debian/workspace/
-./vm-git-fetch feature-auth myapp       # ← /home/debian/workspace/myapp/
+./vm-git-fetch feature-auth             # ← /home/user/workspace/
+./vm-git-fetch feature-auth myapp       # ← /home/user/workspace/myapp/
 
 # Then review and merge
 git checkout feature-auth
@@ -271,7 +284,7 @@ git merge feature-auth
 
 # 2. SSH into VM and work with AI agent
 ./vm-connect.sh
-claude-code  # Work on the feature
+start-claude  # Work on the feature
 
 # 3. Back on host, fetch the changes
 ./vm-git-fetch feature-branch
@@ -302,7 +315,10 @@ cd ~/workspace/my-project
 
 ### Customize VM Settings
 
-Edit `terraform.tfvars` (create if not exists):
+**For most use cases, use environment variables with `vm-up.sh`.**
+
+**Advanced:** You can also create a `terraform.tfvars` file for persistent
+configuration:
 
 ```hcl
 vm_name     = "my-custom-vm"
@@ -310,6 +326,8 @@ vm_memory   = 4096
 vm_vcpu     = 4
 vm_hostname = "my-hostname"
 ```
+
+Then run `./vm-up.sh` to apply the configuration.
 
 ### Available Variables
 
@@ -321,21 +339,20 @@ See `variables.tf` for all configurable options:
 - `vm_disk_size`: Disk size in bytes (default: 40GB)
 - `vm_hostname`: VM hostname
 - `default_user`: Default username (default: user)
-- `ssh_keys_dir`: SSH keys directory (default: ./ssh-keys)
+- `user_uid`: User UID for permission mapping (auto-detected by vm-up.sh)
+- `user_gid`: User GID for permission mapping (auto-detected by vm-up.sh)
 - `debian_image_url`: Debian cloud image URL
-- `gcp_service_account_key_path`: Path to GCP service account JSON
-  key
+- `gcp_service_account_key_path`: Path to GCP service account JSON key
+  (auto-detected by vm-up.sh)
 - `vertex_project_id`: Google Cloud project ID for Vertex AI
-- `vertex_region`: Google Cloud region for Vertex AI (default:
-  us-central1)
+- `vertex_region`: Google Cloud region for Vertex AI (default: us-central1)
 - `network_subnet_third_octet`: Third octet of VM network subnet
-  (192.168.X.0/24) (default: 123)
+  (192.168.X.0/24) (auto-detected by vm-up.sh, default: 123)
 
 ## Nested Virtualization
 
-The VM supports nested virtualization, allowing you to run yolo-vm
-inside a yolo-vm. This is useful for testing VM provisioning or
-isolating AI agent work.
+The VM supports nested virtualization, allowing you to run a VM inside a VM.
+This is useful for testing VM provisioning or isolating AI agent work.
 
 ### Prerequisites for Nested Virtualization
 
@@ -420,36 +437,38 @@ The VM is configured with:
 - **Increased resources**: 4 vCPUs, 4GB RAM, 40GB disk (vs 2/2GB/20GB
   previously)
 
-## Managing SSH Keys
+## SSH Key Management
 
-### Add a New Key
+**SSH keys are automatically generated** by Terraform when you first deploy the
+VM. The keys are stored in the `vm/` directory:
 
-```bash
-cp /path/to/newkey.pub ssh-keys/newkey.pub
-terraform apply
-```
+- `vm-ssh-key` - Private key (used by helper scripts)
+- `vm-ssh-key.pub` - Public key (deployed to the VM)
 
-### Remove a Key
+**The helper scripts (`vm-connect.sh`, `vm-git-*`, etc.) automatically use
+these keys.** You don't need to manage SSH keys manually.
 
-```bash
-rm ssh-keys/oldkey.pub
-terraform apply
-```
+**Security Notes:**
 
-### Key Format
-
-- Must have `.pub` extension
-- Standard SSH public key format
-- One key per file
+- Private key has restrictive permissions (0600)
+- Keys are regenerated if you destroy and recreate the VM
+- Keys are not committed to git (listed in `.gitignore`)
 
 ## Maintenance
 
 ### Update VM Configuration
 
+After modifying Terraform configuration files, redeploy using:
+
 ```bash
-# Modify variables or configuration
-terraform plan
-terraform apply
+./vm-up.sh
+```
+
+**Advanced:** You can also use Terraform directly if you need more control:
+
+```bash
+terraform plan  # Review changes
+terraform apply # Apply changes
 ```
 
 ### Destroy VM
@@ -488,8 +507,9 @@ virsh domiflist debian-trixie-vm
 
 1. Verify VM is running: `virsh list`
 2. Check VM has IP: `terraform output vm_ip`
-3. Verify SSH keys: `ls ssh-keys/*.pub`
-4. Check cloud-init logs: `virsh console debian-trixie-vm` then
+3. Verify SSH keys were generated: `ls vm-ssh-key vm-ssh-key.pub`
+4. Try using the helper script: `./vm-connect.sh`
+5. Check cloud-init logs: `virsh console debian-trixie-vm` then
    `journalctl -u cloud-init`
 
 ### VM Cannot Reach Internet (Multi-Interface Hosts)
@@ -563,9 +583,8 @@ vm/
 ├── cloud-init.yaml.tftpl  # Cloud-init template
 ├── vm-*.sh                # VM helper scripts
 ├── libvirt-nat-fix.sh     # Network fix script
-└── ssh-keys/              # SSH public keys
-    ├── README.md          # SSH keys documentation
-    └── *.pub              # Your public keys
+├── vm-ssh-key             # Auto-generated SSH private key (not in git)
+└── vm-ssh-key.pub         # Auto-generated SSH public key (not in git)
 
 ../common/
 ├── homedir/               # Shared configs (deployed to VM)

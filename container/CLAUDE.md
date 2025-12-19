@@ -233,9 +233,6 @@ manually fix all reported issues
 - `EUID` - User ID for container user (default: 1000)
 - `EGID` - Group ID for container user (default: 1000)
 
-**Note:** `PYTHON_TOOLS` environment variable is no longer used. Python
-tools are installed in the image at build time.
-
 ### GCP Credential Injection
 
 For Vertex AI, use credential file injection instead of mounting:

@@ -62,7 +62,7 @@ container comes pre-configured with:
 
    ```bash
    cd <your-development-repo>
-   start-work my-feature-branch
+   start-work -b my-feature-branch
    ```
 
 This will:
@@ -78,10 +78,10 @@ This will:
 
 ```bash
 # Start work on a new branch (created from current HEAD)
-start-work new-feature
+start-work -b new-feature
 
 # Switch to an existing branch
-start-work existing-branch
+start-work -b existing-branch
 ```
 
 ### Inside the Container
@@ -89,7 +89,10 @@ start-work existing-branch
 Once in the container, you can use:
 
 ```bash
-# Start Claude Code
+# Start Claude Code (recommended - includes MCP servers and plugins)
+start-claude
+
+# Or use claude directly
 claude
 
 # Start Gemini CLI
@@ -116,8 +119,6 @@ To customize permanently:
 2. Rebuild the image:
    `docker build -t ghcr.io/johnstrunk/agent-container -f Dockerfile ..`
 3. Restart your container
-
-**Automatic mounts (OLD BEHAVIOR) have been removed.**
 
 ### Environment Variables
 
