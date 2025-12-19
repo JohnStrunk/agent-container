@@ -1,0 +1,21 @@
+# SECURITY: Never commit credentials or secrets
+*.json
+*.key
+*.pem
+*.p12
+*.pfx
+*credentials*
+*secret*
+*token*
+
+# Allow non-credential JSON files explicitly
+!.claude.json
+!settings.json
+!package.json
+
+# SSH keys (if any added)
+id_*
+*.pub
+
+# Environment files
+.env*
