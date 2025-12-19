@@ -106,7 +106,7 @@ virsh console debian-trixie-vm
 **Via SSH (as default user):**
 
 ```bash
-ssh debian@<VM_IP>
+ssh user@<VM_IP>
 ```
 
 **Via SSH (as root):**
@@ -165,7 +165,7 @@ export ANTHROPIC_VERTEX_PROJECT_ID="your-gcp-project-id"
 SSH into the VM and run:
 
 ```bash
-ssh debian@<VM_IP>
+./vm-connect.sh
 claude-code --help
 ```
 
@@ -229,8 +229,8 @@ host and VM workspace:
 ./vm-dir-push <local-directory> [workspace-subpath]
 
 # Examples:
-./vm-dir-push ./my-project              # → /home/debian/workspace/
-./vm-dir-push ./my-project myapp        # → /home/debian/workspace/myapp/
+./vm-dir-push ./my-project              # → /home/user/workspace/
+./vm-dir-push ./my-project myapp        # → /home/user/workspace/myapp/
 ```
 
 **Pull directory from VM:**
@@ -239,8 +239,8 @@ host and VM workspace:
 ./vm-dir-pull <local-directory> [workspace-subpath]
 
 # Examples:
-./vm-dir-pull ./my-project              # ← /home/debian/workspace/
-./vm-dir-pull ./my-project myapp        # ← /home/debian/workspace/myapp/
+./vm-dir-pull ./my-project              # ← /home/user/workspace/
+./vm-dir-pull ./my-project myapp        # ← /home/user/workspace/myapp/
 ```
 
 ### Git Repository Sync
@@ -251,8 +251,8 @@ host and VM workspace:
 ./vm-git-push <branch-name> [workspace-subpath]
 
 # Examples:
-./vm-git-push feature-auth              # → /home/debian/workspace/
-./vm-git-push feature-auth myapp        # → /home/debian/workspace/myapp/
+./vm-git-push feature-auth              # → /home/user/workspace/
+./vm-git-push feature-auth myapp        # → /home/user/workspace/myapp/
 ```
 
 **Fetch git branch from VM:**
@@ -261,8 +261,8 @@ host and VM workspace:
 ./vm-git-fetch <branch-name> [workspace-subpath]
 
 # Examples:
-./vm-git-fetch feature-auth             # ← /home/debian/workspace/
-./vm-git-fetch feature-auth myapp       # ← /home/debian/workspace/myapp/
+./vm-git-fetch feature-auth             # ← /home/user/workspace/
+./vm-git-fetch feature-auth myapp       # ← /home/user/workspace/myapp/
 
 # Then review and merge
 git checkout feature-auth
