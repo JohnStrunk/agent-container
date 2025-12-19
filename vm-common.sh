@@ -5,7 +5,7 @@
 # Returns: VM IP address
 # Exits: 1 if VM IP not available
 get_vm_ip() {
-  local script_dir="$1"
+  local script_dir="${1:-terraform}"
   cd "$script_dir" || exit 1
 
   local vm_ip
@@ -24,7 +24,7 @@ get_vm_ip() {
 # Returns: Username
 # Exits: 1 if username not available
 get_vm_user() {
-  local script_dir="$1"
+  local script_dir="${1:-terraform}"
   cd "$script_dir" || exit 1
 
   local vm_user
@@ -42,7 +42,7 @@ get_vm_user() {
 # Get the workspace path on the VM
 # Returns: Absolute path to workspace directory
 get_vm_workspace_path() {
-  local script_dir="$1"
+  local script_dir="${1:-terraform}"
   local vm_user
   vm_user=$(get_vm_user "$script_dir")
 
@@ -56,7 +56,7 @@ get_vm_workspace_path() {
 #   $3 - VM user
 # Exits: 2 if VM not reachable
 check_vm_reachable() {
-  local script_dir="$1"
+  local script_dir="${1:-terraform}"
   local vm_ip="$2"
   local vm_user="$3"
   local ssh_key="$script_dir/vm-ssh-key"
@@ -94,7 +94,7 @@ get_absolute_path() {
 # Returns: SSH command output
 # Exits: With SSH exit code
 vm_ssh() {
-  local script_dir="$1"
+  local script_dir="${1:-terraform}"
   local vm_user="$2"
   local vm_ip="$3"
   shift 3
@@ -109,7 +109,7 @@ vm_ssh() {
 #   $1 - Script directory (to locate SSH key)
 # Returns: SSH command string for rsync -e option
 get_rsync_ssh_cmd() {
-  local script_dir="$1"
+  local script_dir="${1:-terraform}"
   local ssh_key="$script_dir/vm-ssh-key"
 
   echo "ssh -i $ssh_key -o StrictHostKeyChecking=no"
