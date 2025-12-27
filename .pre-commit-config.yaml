@@ -115,7 +115,7 @@ repos:
         #  exclude: package.lock.json
 
   - repo: https://gitlab.com/bmares/check-json5
-    rev: "v1.0.0"
+    rev: "v1.0.1"
     hooks:
       # Check that JSON files are valid JSON5
       - id: check-json5
