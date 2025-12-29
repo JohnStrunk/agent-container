@@ -43,7 +43,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
     apt-get install -y --no-install-recommends terraform
 
 # Install uv and uvx from the official Astral image
-COPY --from=ghcr.io/astral-sh/uv:latest@sha256:5713fa8217f92b80223bc83aac7db36ec80a84437dbc0d04bbc659cae030d8c9 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:latest@sha256:81f1a183fbdd9cec1498b066a32f0da043d4a9dda12b8372c7bfd183665e485d /uv /uvx /bin/
 
 # Install golang from builder stage
 COPY --from=golang-installer /tmp/go /usr/local/go
