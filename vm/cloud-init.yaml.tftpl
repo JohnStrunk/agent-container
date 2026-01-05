@@ -16,6 +16,10 @@ write_files:
     content: |
       ${indent(6, file_data.content)}
 %{ endfor ~}
+  - path: /etc/agent-environment
+    permissions: '0644'
+    content: |
+      agent-vm
 
 users:
   - name: ${default_user}
