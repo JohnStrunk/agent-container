@@ -110,9 +110,13 @@ parse_args() {
         exit "$EXIT_INVALID_ARGS"
     fi
 
-    # Set default credentials path if not provided
-    if [[ -z "$GCP_CREDS_PATH" ]]; then
-        GCP_CREDS_PATH="$GCP_CREDS_DEFAULT"
+    # Apply credential precedence: CLI flag → env var → default
+    if [[ -z "$GCP_CREDS_PATH" ]]; then  # No --gcp-credentials flag
+        if [[ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then
+            GCP_CREDS_PATH="$GOOGLE_APPLICATION_CREDENTIALS"
+        else
+            GCP_CREDS_PATH="$GCP_CREDS_DEFAULT"
+        fi
     fi
 }
 
