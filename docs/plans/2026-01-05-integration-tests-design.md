@@ -213,6 +213,12 @@ fi
 
 **Philosophy:** Reuse exact same mechanisms as production scripts.
 
+**Credential precedence (all scripts):**
+
+1. CLI flag `--gcp-credentials <path>` (highest priority)
+2. Environment variable `GOOGLE_APPLICATION_CREDENTIALS`
+3. Default location `~/.config/gcloud/application_default_credentials.json`
+
 **Container approach:**
 
 ```bash
