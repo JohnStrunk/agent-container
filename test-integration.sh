@@ -19,9 +19,25 @@ EXIT_TEST_FAILED=1
 EXIT_PREREQ_FAILED=2
 EXIT_INVALID_ARGS=3
 
+# Logging functions with timestamps
+log() {
+    echo "[$(date '+%H:%M:%S')] $*"
+}
+
+log_step() {
+    echo ""
+    echo "[$(date '+%H:%M:%S')] === $* ==="
+    echo ""
+}
+
+log_error() {
+    echo "[$(date '+%H:%M:%S')] ERROR: $*" >&2
+}
+
 # Placeholder for main function
 main() {
-    echo "Integration tests - placeholder"
+    log_step "Integration Tests v${VERSION}"
+    log "Placeholder for tests"
 }
 
 main "$@"
