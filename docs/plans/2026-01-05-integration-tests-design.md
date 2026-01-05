@@ -112,6 +112,29 @@ Single unified script at repository root: `test-integration.sh`
 ./test-integration.sh --container --rebuild
 ```
 
+### Environment Detection
+
+Both container and VM environments include an environment marker file at
+`/etc/agent-environment` that identifies the execution context:
+
+- **Container**: Contains `agent-container`
+- **VM**: Contains `agent-vm`
+- **Host**: File does not exist
+
+The integration test script checks this marker and **prevents execution
+inside the container environment**, which lacks Docker and VM support. Tests
+can run from the host or VM environments.
+
+```bash
+# /etc/agent-environment content
+agent-container  # In container
+agent-vm         # In VM
+# (file absent)  # On host
+```
+
+This prevents accidental test execution in environments that cannot support
+the required tooling (Docker, Terraform, libvirt).
+
 ### Test Execution Flow
 
 #### Container Test

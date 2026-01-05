@@ -288,6 +288,13 @@ Credentials are ephemeral and deleted when container exits.
 - Proper permission handling for mounted workspace
 - Credentials written with restrictive permissions (600)
 
+### Environment Identification
+
+The container includes an environment marker file at
+`/etc/agent-environment` containing `agent-container`. This identifies the
+execution context and is used to prevent integration tests from running
+inside the container (which lacks Docker and VM support).
+
 ## Common Tasks
 
 ### Adding New Tools

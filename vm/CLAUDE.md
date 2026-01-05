@@ -185,6 +185,12 @@ This tests:
 - Constrained sudo access for AI agents
 - Root access via SSH key only (no password)
 
+## Environment Identification
+
+The VM includes an environment marker file at `/etc/agent-environment`
+containing `agent-vm`. This identifies the execution context and allows
+integration tests to run from the VM environment.
+
 ## Maintenance Notes
 
 - Pre-commit hooks ensure code quality
