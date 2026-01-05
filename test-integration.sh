@@ -304,6 +304,93 @@ test_container() {
     return 0
 }
 
+test_vm() {
+    log_step "Starting VM Integration Test"
+    local start_time
+    start_time=$(date +%s)
+
+    # Change to vm directory
+    cd vm || {
+        log_error "vm directory not found"
+        return 1
+    }
+
+    # Step 1: Check for existing VM and destroy it
+    log "[VM] Checking for existing VM..."
+    if terraform state list 2>/dev/null | grep -q libvirt_domain.agent_vm; then
+        log "[VM] Found existing VM from previous test, destroying..."
+        terraform destroy -auto-approve \
+            -var="user_uid=$(id -u)" \
+            -var="user_gid=$(id -g)" 2>&1 | \
+            grep -v "^$" || true
+    fi
+
+    # Step 2: Provision VM
+    log "[VM] Provisioning VM with Terraform..."
+
+    # Set GCP credentials path if custom
+    if [[ -n "$GCP_CREDS_PATH" ]] && [[ "$GCP_CREDS_PATH" != "$GCP_CREDS_DEFAULT" ]]; then
+        export GCP_CREDENTIALS_PATH="$GCP_CREDS_PATH"
+    fi
+
+    if ! run_with_timeout 300 ./vm-up.sh; then
+        log_error "VM provisioning failed"
+        cd .. || return 1
+        return 1
+    fi
+
+    local provision_time
+    provision_time=$(($(date +%s) - start_time))
+    log "[VM] VM provisioned (${provision_time}s)"
+
+    # Step 3: Get VM IP
+    local vm_ip
+    vm_ip=$(terraform output -raw vm_ip 2>/dev/null || echo "")
+    if [[ -z "$vm_ip" ]]; then
+        log_error "Failed to get VM IP from terraform output"
+        cd .. || return 1
+        return 1
+    fi
+
+    log "[VM] VM IP: $vm_ip"
+
+    # Step 4: Wait for cloud-init to complete
+    log "[VM] Waiting for cloud-init to complete..."
+
+    local ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+                    -o LogLevel=ERROR -i vm_ssh_key)
+
+    if ! run_with_timeout 120 bash -c "
+        while ! ssh ${ssh_opts[*]} claude@${vm_ip} \
+            'cloud-init status --wait' 2>/dev/null; do
+            sleep 5
+        done
+    "; then
+        log_error "cloud-init failed or timed out"
+        cd .. || return 1
+        return 1
+    fi
+
+    log "[VM] cloud-init complete"
+
+    # Step 5: Run Claude test via SSH
+    log "[VM] Testing Claude Code in VM..."
+
+    if ! run_with_timeout 90 ssh "${ssh_opts[@]}" "claude@${vm_ip}" \
+        "bash -s" < <(generate_test_command); then
+        log_error "Claude test failed in VM"
+        cd .. || return 1
+        return 1
+    fi
+
+    cd .. || return 1
+
+    local total_time
+    total_time=$(($(date +%s) - start_time))
+    log_step "VM Test: PASS (${total_time}s)"
+    return 0
+}
+
 main() {
     parse_args "$@"
 
@@ -323,14 +410,16 @@ main() {
             exit "$EXIT_TEST_FAILED"
         fi
     elif [[ "$TEST_TYPE" == "vm" ]]; then
-        log "VM test not yet implemented"
-        exit "$EXIT_TEST_FAILED"
+        if ! test_vm; then
+            exit "$EXIT_TEST_FAILED"
+        fi
     elif [[ "$TEST_TYPE" == "all" ]]; then
         if ! test_container; then
             exit "$EXIT_TEST_FAILED"
         fi
-        log "VM test not yet implemented"
-        exit "$EXIT_TEST_FAILED"
+        if ! test_vm; then
+            exit "$EXIT_TEST_FAILED"
+        fi
     fi
 
     log_step "All Tests Passed!"
