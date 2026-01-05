@@ -11,7 +11,13 @@ USER_GID=$(id -g)
 
 # Auto-detect GCP credentials (same as container version)
 GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
-GCP_CREDS_PATH="${GCP_CREDENTIALS_PATH:-$GCP_CREDS_DEFAULT}"
+
+# Apply credential precedence: GOOGLE_APPLICATION_CREDENTIALS → default
+if [[ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then
+    GCP_CREDS_PATH="$GOOGLE_APPLICATION_CREDENTIALS"
+else
+    GCP_CREDS_PATH="$GCP_CREDS_DEFAULT"
+fi
 
 # Build terraform variable arguments
 TERRAFORM_VARS=(
