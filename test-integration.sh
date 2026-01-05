@@ -144,7 +144,7 @@ validate_prerequisites() {
             log "✓ Terraform installed"
         fi
 
-        if ! virsh list &>/dev/null 2>&1; then
+        if ! virsh list &>/dev/null; then
             log_error "libvirt not accessible"
             log_error "  Check: sudo systemctl status libvirtd"
             ((errors++))
@@ -171,7 +171,7 @@ validate_prerequisites() {
         has_credentials=true
     fi
 
-    if [[ "$has_credentials" == "false" ]]; then
+    if [[ "$has_credentials" == false ]]; then
         log_error "No credentials found. Need at least one of:"
         log_error "  - GCP credentials file at: $GCP_CREDS_PATH"
         log_error "    Run: gcloud auth application-default login"
