@@ -79,6 +79,11 @@ parse_args() {
                 shift
                 ;;
             --gcp-credentials)
+                if [[ -z "$2" || "$2" == --* ]]; then
+                    log_error "--gcp-credentials requires a path argument"
+                    usage
+                    exit "$EXIT_INVALID_ARGS"
+                fi
                 GCP_CREDS_PATH="$2"
                 shift 2
                 ;;
