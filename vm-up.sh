@@ -35,13 +35,13 @@ EOF
 
 # Check if bootc image needs rebuild
 needs_bootc_rebuild() {
-    if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+    if ! sudo podman image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
         echo "bootc image doesn't exist"
         return 0
     fi
 
     local image_created
-    image_created=$(docker image inspect "$IMAGE_NAME" \
+    image_created=$(sudo podman image inspect "$IMAGE_NAME" \
         --format '{{.Created}}' | xargs -I{} date -d {} +%s 2>/dev/null || echo 0)
 
     local newest_source
@@ -67,7 +67,7 @@ needs_qcow2_rebuild() {
     qcow2_time=$(stat -c %Y "$QCOW2_PATH")
 
     local image_created
-    image_created=$(docker image inspect "$IMAGE_NAME" \
+    image_created=$(sudo podman image inspect "$IMAGE_NAME" \
         --format '{{.Created}}' | xargs -I{} date -d {} +%s 2>/dev/null || echo 0)
 
     if [ "$image_created" -gt "$qcow2_time" ]; then
@@ -115,7 +115,7 @@ mkdir -p "$BUILD_DIR"
 # Step 1: Build bootc image if needed
 if needs_bootc_rebuild; then
     echo "Building bootc image..."
-    docker build -t "$IMAGE_NAME" -f "$BOOTC_DIR/Containerfile" "$BOOTC_DIR/"
+    sudo podman build -t "$IMAGE_NAME" -f "$BOOTC_DIR/Containerfile" "$BOOTC_DIR/"
     # Force qcow2 rebuild since image changed
     rm -f "$QCOW2_PATH"
 fi
@@ -123,7 +123,8 @@ fi
 # Step 2: Generate qcow2 if needed
 if needs_qcow2_rebuild; then
     echo "Generating VM disk image from bootc container..."
-    docker run --rm --privileged \
+    sudo podman run --rm --privileged \
+        -v /var/lib/containers/storage:/var/lib/containers/storage \
         -v "$PWD/$BUILD_DIR:/output" \
         --security-opt label=disable \
         quay.io/centos-bootc/bootc-image-builder:latest \

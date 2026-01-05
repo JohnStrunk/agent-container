@@ -87,7 +87,8 @@ RUN npm install -g \
     @google/gemini-cli
 
 # Copy homedir configs to /etc/skel/
-COPY --chown=0:0 --chmod=u=rw,u+X,go=r,go+X homedir/ /etc/skel/
+COPY --chown=0:0 homedir/ /etc/skel/
+RUN chmod -R u=rwX,go=rX /etc/skel/
 
 # Copy container entrypoint
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
