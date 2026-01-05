@@ -259,6 +259,51 @@ run_with_timeout() {
     timeout "$timeout_seconds" "$@"
 }
 
+test_container() {
+    log_step "Starting Container Integration Test"
+    local start_time
+    start_time=$(date +%s)
+
+    # Step 1: Build image
+    log "[Container] Building image..."
+    local build_cmd=(docker build -t ghcr.io/johnstrunk/agent-container
+                     -f container/Dockerfile .)
+
+    if [[ "$FORCE_REBUILD" == "true" ]]; then
+        log "[Container] Force rebuild enabled (--no-cache)"
+        build_cmd+=(--no-cache)
+    fi
+
+    if ! run_with_timeout 300 "${build_cmd[@]}"; then
+        log_error "Container build failed"
+        return 1
+    fi
+
+    local build_time
+    build_time=$(($(date +%s) - start_time))
+    log "[Container] Build complete (${build_time}s)"
+
+    # Step 2: Run test in container
+    log "[Container] Testing Claude Code in container..."
+
+    local gcp_creds_arg=()
+    if [[ -f "$GCP_CREDS_PATH" ]]; then
+        gcp_creds_arg=(--gcp-credentials "$GCP_CREDS_PATH")
+    fi
+
+    if ! run_with_timeout 90 ./container/start-work \
+        "${gcp_creds_arg[@]}" \
+        -- bash -c "$(generate_test_command)"; then
+        log_error "Container test failed"
+        return 1
+    fi
+
+    local total_time
+    total_time=$(($(date +%s) - start_time))
+    log_step "Container Test: PASS (${total_time}s)"
+    return 0
+}
+
 main() {
     parse_args "$@"
 
@@ -272,8 +317,24 @@ main() {
         exit "$EXIT_PREREQ_FAILED"
     fi
 
-    log "All prerequisites validated"
-    log "Cleanup handlers registered"
+    # Run tests based on type
+    if [[ "$TEST_TYPE" == "container" ]]; then
+        if ! test_container; then
+            exit "$EXIT_TEST_FAILED"
+        fi
+    elif [[ "$TEST_TYPE" == "vm" ]]; then
+        log "VM test not yet implemented"
+        exit "$EXIT_TEST_FAILED"
+    elif [[ "$TEST_TYPE" == "all" ]]; then
+        if ! test_container; then
+            exit "$EXIT_TEST_FAILED"
+        fi
+        log "VM test not yet implemented"
+        exit "$EXIT_TEST_FAILED"
+    fi
+
+    log_step "All Tests Passed!"
+    exit "$EXIT_SUCCESS"
 }
 
 main "$@"
