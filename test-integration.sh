@@ -183,8 +183,51 @@ validate_prerequisites() {
     return $errors
 }
 
+cleanup_container() {
+    log "Cleaning up container resources..."
+    # Docker handles cleanup via --rm flag, nothing to do
+    log "Container cleanup complete"
+}
+
+cleanup_vm() {
+    log "Cleaning up VM..."
+    if [[ -d vm ]] && [[ -f vm/main.tf ]]; then
+        cd vm || return
+        if terraform state list 2>/dev/null | grep -q .; then
+            terraform destroy -auto-approve \
+                -var="user_uid=$(id -u)" \
+                -var="user_gid=$(id -g)" 2>&1 | \
+                grep -v "^$" || true
+        else
+            log "No VM to clean up"
+        fi
+        cd .. || return
+    fi
+    log "VM cleanup complete"
+}
+
+cleanup_all() {
+    local exit_code=$?
+
+    echo ""
+    log "Running cleanup..."
+
+    if [[ "$TEST_TYPE" == "container" ]] || [[ "$TEST_TYPE" == "all" ]]; then
+        cleanup_container
+    fi
+
+    if [[ "$TEST_TYPE" == "vm" ]] || [[ "$TEST_TYPE" == "all" ]]; then
+        cleanup_vm
+    fi
+
+    exit $exit_code
+}
+
 main() {
     parse_args "$@"
+
+    # Set cleanup trap
+    trap cleanup_all EXIT
 
     log_step "Integration Tests v${VERSION}"
 
@@ -194,6 +237,7 @@ main() {
     fi
 
     log "All prerequisites validated"
+    log "Cleanup handlers registered"
 }
 
 main "$@"
