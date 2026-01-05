@@ -116,14 +116,84 @@ parse_args() {
     fi
 }
 
-# Placeholder for main function
+validate_prerequisites() {
+    local errors=0
+
+    log "Validating prerequisites..."
+
+    # Check Docker for container tests
+    if [[ "$TEST_TYPE" == "container" ]] || [[ "$TEST_TYPE" == "all" ]]; then
+        if ! command -v docker &>/dev/null; then
+            log_error "docker not found. Install Docker first."
+            ((errors++))
+        elif ! docker info &>/dev/null; then
+            log_error "Docker daemon not running"
+            log_error "  Start with: sudo systemctl start docker"
+            ((errors++))
+        else
+            log "✓ Docker installed and running"
+        fi
+    fi
+
+    # Check Terraform and libvirt for VM tests
+    if [[ "$TEST_TYPE" == "vm" ]] || [[ "$TEST_TYPE" == "all" ]]; then
+        if ! command -v terraform &>/dev/null; then
+            log_error "terraform not found. Install Terraform first."
+            ((errors++))
+        else
+            log "✓ Terraform installed"
+        fi
+
+        if ! virsh list &>/dev/null 2>&1; then
+            log_error "libvirt not accessible"
+            log_error "  Check: sudo systemctl status libvirtd"
+            ((errors++))
+        else
+            log "✓ libvirt accessible"
+        fi
+    fi
+
+    # Check credentials
+    local has_credentials=false
+
+    if [[ -f "$GCP_CREDS_PATH" ]]; then
+        log "✓ GCP credentials found: $GCP_CREDS_PATH"
+        has_credentials=true
+    fi
+
+    if [[ -n "$ANTHROPIC_API_KEY" ]]; then
+        log "✓ ANTHROPIC_API_KEY environment variable set"
+        has_credentials=true
+    fi
+
+    if [[ -n "$GEMINI_API_KEY" ]]; then
+        log "✓ GEMINI_API_KEY environment variable set"
+        has_credentials=true
+    fi
+
+    if [[ "$has_credentials" == "false" ]]; then
+        log_error "No credentials found. Need at least one of:"
+        log_error "  - GCP credentials file at: $GCP_CREDS_PATH"
+        log_error "    Run: gcloud auth application-default login"
+        log_error "  - ANTHROPIC_API_KEY environment variable"
+        log_error "  - GEMINI_API_KEY environment variable"
+        ((errors++))
+    fi
+
+    return $errors
+}
+
 main() {
     parse_args "$@"
 
     log_step "Integration Tests v${VERSION}"
-    log "Test type: $TEST_TYPE"
-    log "GCP credentials: $GCP_CREDS_PATH"
-    log "Force rebuild: $FORCE_REBUILD"
+
+    if ! validate_prerequisites; then
+        log_error "Prerequisite validation failed"
+        exit "$EXIT_PREREQ_FAILED"
+    fi
+
+    log "All prerequisites validated"
 }
 
 main "$@"
