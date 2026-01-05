@@ -183,12 +183,14 @@ validate_prerequisites() {
     return $errors
 }
 
+# shellcheck disable=SC2317
 cleanup_container() {
     log "Cleaning up container resources..."
     # Docker handles cleanup via --rm flag, nothing to do
     log "Container cleanup complete"
 }
 
+# shellcheck disable=SC2317
 cleanup_vm() {
     log "Cleaning up VM..."
     if [[ -d vm ]] && [[ -f vm/main.tf ]]; then
@@ -207,6 +209,7 @@ cleanup_vm() {
     log "VM cleanup complete"
 }
 
+# shellcheck disable=SC2317
 cleanup_all() {
     local exit_code=$?
 
@@ -357,12 +360,10 @@ test_vm() {
     # Step 4: Wait for cloud-init to complete
     log "[VM] Waiting for cloud-init to complete..."
 
-    local ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
-                    -o LogLevel=ERROR -i vm_ssh_key)
+    local ssh_cmd="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i vm_ssh_key"
 
     if ! run_with_timeout 120 bash -c "
-        while ! ssh "${ssh_opts[@]}" claude@${vm_ip} \
-            'cloud-init status --wait' 2>/dev/null; do
+        while ! $ssh_cmd claude@${vm_ip} 'cloud-init status --wait' 2>/dev/null; do
             sleep 5
         done
     "; then
@@ -376,7 +377,8 @@ test_vm() {
     # Step 5: Run Claude test via SSH
     log "[VM] Testing Claude Code in VM..."
 
-    if ! run_with_timeout 90 ssh "${ssh_opts[@]}" "claude@${vm_ip}" \
+    # shellcheck disable=SC2086
+    if ! run_with_timeout 90 $ssh_cmd "claude@${vm_ip}" \
         "bash -s" < <(generate_test_command); then
         log_error "Claude test failed in VM"
         cd .. || return 1
