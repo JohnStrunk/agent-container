@@ -235,14 +235,24 @@ manually fix all reported issues
 
 ### GCP Credential Injection
 
-For Vertex AI, use credential file injection instead of mounting:
+Credentials are detected in this order:
+
+1. `--gcp-credentials <path>` flag (highest priority)
+2. `GOOGLE_APPLICATION_CREDENTIALS` environment variable
+3. Default: `~/.config/gcloud/application_default_credentials.json`
+
+Examples:
 
 ```bash
 # Auto-detect from default location
 start-work -b feature
 
-# Custom path
+# Custom path via flag
 start-work -b feature --gcp-credentials ~/my-sa.json
+
+# Custom path via env var
+export GOOGLE_APPLICATION_CREDENTIALS=~/my-sa.json
+start-work -b feature
 ```
 
 Credentials are ephemeral and deleted when container exits.
