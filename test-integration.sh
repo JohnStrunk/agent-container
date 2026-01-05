@@ -244,8 +244,9 @@ set -e -o pipefail
 echo "[Test] Sending prompt to Claude Code..."
 
 # One-shot prompt with 60s timeout
+# Redirect stdin from /dev/null to prevent TTY setup issues
 timeout 60 claude -p "Repeat this phrase exactly: 'All systems go!'" \
-    > /tmp/claude-response.txt 2>&1 || {
+    < /dev/null > /tmp/claude-response.txt 2>&1 || {
     echo "ERROR: Claude did not respond within timeout"
     cat /tmp/claude-response.txt
     exit 1

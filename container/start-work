@@ -177,7 +177,14 @@ else
     echo "Starting agent container on $WORKTREE_DIR..."
 fi
 
-docker run --rm -it \
+# Conditionally add -it flags only if stdin AND stdout are TTYs
+# This ensures we don't allocate a TTY when running from scripts/automation
+TTY_FLAGS=()
+if [[ -t 0 ]] && [[ -t 1 ]]; then
+    TTY_FLAGS=("-it")
+fi
+
+docker run --rm "${TTY_FLAGS[@]}" \
     --name "$CONTANIER_NAME" \
     --hostname "$CONTANIER_NAME" \
     "${MOUNT_ARGS[@]}" \
