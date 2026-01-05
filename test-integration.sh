@@ -192,16 +192,17 @@ cleanup_container() {
 cleanup_vm() {
     log "Cleaning up VM..."
     if [[ -d vm ]] && [[ -f vm/main.tf ]]; then
-        cd vm || return
-        if terraform state list 2>/dev/null | grep -q .; then
-            terraform destroy -auto-approve \
-                -var="user_uid=$(id -u)" \
-                -var="user_gid=$(id -g)" 2>&1 | \
-                grep -v "^$" || true
-        else
-            log "No VM to clean up"
-        fi
-        cd .. || return
+        (
+            cd vm || exit
+            if terraform state list 2>/dev/null | grep -q .; then
+                terraform destroy -auto-approve \
+                    -var="user_uid=$(id -u)" \
+                    -var="user_gid=$(id -g)" 2>&1 | \
+                    grep -v "^$" || true
+            else
+                log "No VM to clean up"
+            fi
+        )
     fi
     log "VM cleanup complete"
 }
