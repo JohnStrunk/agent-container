@@ -221,7 +221,7 @@ cleanup_all() {
         cleanup_vm
     fi
 
-    exit $exit_code
+    exit "$exit_code"
 }
 
 generate_test_command() {
