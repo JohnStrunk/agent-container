@@ -155,7 +155,7 @@ The `vm-up.sh` script will:
 #### Alternative: Custom credentials path
 
 ```bash
-export GCP_CREDENTIALS_PATH="~/my-service-account.json"
+export GOOGLE_APPLICATION_CREDENTIALS="~/my-service-account.json"
 export ANTHROPIC_VERTEX_PROJECT_ID="your-gcp-project-id"
 ./vm-up.sh
 ```
