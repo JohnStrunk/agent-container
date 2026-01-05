@@ -367,6 +367,29 @@ No direct tool commands are available.
    - Fix issues immediately when found
    - Re-run checks until all pass
 
+### Integration Tests
+
+Run end-to-end tests to validate container environment:
+
+```bash
+# From repository root
+./test-integration.sh --container
+```
+
+This tests:
+
+- Docker image builds successfully
+- Credentials inject correctly
+- Config files deploy from `common/homedir/`
+- Claude Code starts and responds to prompts
+
+**When to run:**
+
+- Before committing Dockerfile changes
+- Before committing changes to `common/homedir/` configs
+- Before committing entrypoint script changes
+- After updating package lists in `common/packages/`
+
 ## Maintenance Notes
 
 - Container image is published to `ghcr.io/johnstrunk/agent-container`
