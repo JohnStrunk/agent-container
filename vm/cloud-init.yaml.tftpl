@@ -6,7 +6,7 @@ manage_etc_hosts: true
 write_files:
 %{ if gcp_service_account_key != "" ~}
   - path: /etc/google/application_default_credentials.json
-    permissions: '0644'
+    permissions: '0600'
     content: |
       ${indent(6, gcp_service_account_key)}
 %{ endif ~}
