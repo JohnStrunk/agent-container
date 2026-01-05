@@ -54,6 +54,38 @@ Both approaches share configurations and package lists from `common/`:
 - `common/homedir/` - Shared configuration files (.claude.json, .gitconfig)
 - `common/packages/` - Package lists (apt, npm, python) and version pins
 
+## Integration Tests
+
+End-to-end tests that validate both container and VM environments can
+successfully run AI assistants after repository changes.
+
+**Requirements:**
+
+- Valid credentials (GCP service account or API keys)
+- Docker (for container tests) or Terraform + libvirt (for VM tests)
+
+**Run tests:**
+
+```bash
+# Test container approach
+./test-integration.sh --container
+
+# Test VM approach
+./test-integration.sh --vm
+
+# Test both
+./test-integration.sh --all
+
+# Custom credentials
+./test-integration.sh --container --gcp-credentials ~/my-creds.json
+```
+
+**Note:** These tests make real API calls and are not suitable for CI. Run
+locally before committing changes to configs, Dockerfiles, or Terraform
+files.
+
+See `docs/plans/2026-01-05-integration-tests-design.md` for design details.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
