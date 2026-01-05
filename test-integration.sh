@@ -335,10 +335,8 @@ test_vm() {
     # Step 2: Provision VM
     log "[VM] Provisioning VM with Terraform..."
 
-    # Set GCP credentials path if custom
-    if [[ -n "$GCP_CREDS_PATH" ]] && [[ "$GCP_CREDS_PATH" != "$GCP_CREDS_DEFAULT" ]]; then
-        export GCP_CREDENTIALS_PATH="$GCP_CREDS_PATH"
-    fi
+    # Export GOOGLE_APPLICATION_CREDENTIALS for vm-up.sh
+    export GOOGLE_APPLICATION_CREDENTIALS="$GCP_CREDS_PATH"
 
     if ! run_with_timeout 300 ./vm-up.sh; then
         log_error "VM provisioning failed"
