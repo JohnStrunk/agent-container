@@ -224,6 +224,41 @@ cleanup_all() {
     exit $exit_code
 }
 
+generate_test_command() {
+    cat <<'EOF'
+#!/bin/bash
+set -e -o pipefail
+
+echo "[Test] Sending prompt to Claude Code..."
+
+# One-shot prompt with 60s timeout
+timeout 60 claude -p "Repeat this phrase exactly: 'All systems go!'" \
+    > /tmp/claude-response.txt 2>&1 || {
+    echo "ERROR: Claude did not respond within timeout"
+    cat /tmp/claude-response.txt
+    exit 1
+}
+
+# Validate response contains expected phrase
+if grep -q "All systems go!" /tmp/claude-response.txt; then
+    echo "[Test] ✓ Claude response validated"
+    echo "[Test] Response: $(cat /tmp/claude-response.txt)"
+    exit 0
+else
+    echo "ERROR: Claude response did not contain expected phrase"
+    echo "Response was:"
+    cat /tmp/claude-response.txt
+    exit 1
+fi
+EOF
+}
+
+run_with_timeout() {
+    local timeout_seconds=$1
+    shift
+    timeout "$timeout_seconds" "$@"
+}
+
 main() {
     parse_args "$@"
 
