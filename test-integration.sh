@@ -361,7 +361,7 @@ test_vm() {
                     -o LogLevel=ERROR -i vm_ssh_key)
 
     if ! run_with_timeout 120 bash -c "
-        while ! ssh ${ssh_opts[*]} claude@${vm_ip} \
+        while ! ssh "${ssh_opts[@]}" claude@${vm_ip} \
             'cloud-init status --wait' 2>/dev/null; do
             sleep 5
         done
