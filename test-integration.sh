@@ -396,6 +396,19 @@ test_vm() {
 main() {
     parse_args "$@"
 
+    # Check environment - integration tests cannot run in container
+    if [[ -f /etc/agent-environment ]]; then
+        local env_type
+        env_type=$(cat /etc/agent-environment)
+        if [[ "$env_type" == "agent-container" ]]; then
+            log_error "Integration tests cannot run inside the container environment"
+            log_error "The container does not have Docker or VM support"
+            log_error "Run integration tests from the host machine instead"
+            exit "$EXIT_PREREQ_FAILED"
+        fi
+        log "Detected environment: $env_type"
+    fi
+
     # Set cleanup trap
     trap cleanup_all EXIT
 
