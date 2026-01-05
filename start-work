@@ -4,6 +4,7 @@ set -e -o pipefail
 WORKTREE_BASE_DIR=~/src/worktrees
 IMAGE_NAME="ghcr.io/johnstrunk/agent-bootc:latest"
 BOOTC_DIR="bootc"
+GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
 
 function usage {
     cat - <<EOF
@@ -12,21 +13,28 @@ $0: Start using a coding agent on a git worktree (bootc container mode)
 Usage: $0 [options] [-b <branch_name>] [command...]
 
 Options:
-  -b, --branch <name>         Branch name for git worktree
-  --gcp-credentials <path>    Path to GCP service account JSON key file
-  -h, --help                  Show this help
+  -b, --branch <name>            Branch name for git worktree
+  --gcp-credentials <path>       Path to GCP service account JSON key file
+                                 (default: ~/.config/gcloud/application_default_credentials.json if exists)
+  --vertex-project-id <id>       Google Cloud project ID for Vertex AI
+                                 (default: \$ANTHROPIC_VERTEX_PROJECT_ID)
+  --vertex-region <region>       Google Cloud region for Vertex AI
+                                 (default: \$CLOUD_ML_REGION or us-central1)
+  -h, --help                     Show this help
 
 Arguments:
-  command...                  Optional command to execute in the container
+  command...                     Optional command to execute in the container
 
 Environment Variables:
-  ANTHROPIC_API_KEY          Anthropic API key for Claude
-  GEMINI_API_KEY             Google Gemini API key
+  ANTHROPIC_API_KEY             Anthropic API key for Claude (alternative to Vertex)
+  GEMINI_API_KEY                Google Gemini API key
 
 Examples:
-  $0 -b feature-auth                    # Start interactive session
-  $0 -b feature-auth -- claude          # Run claude directly
-  $0                                    # Use current directory (no git)
+  $0 -b feature-auth                                              # Start interactive session
+  $0 -b feature-auth --gcp-credentials ~/creds.json \\
+     --vertex-project-id my-project                               # Use Vertex AI
+  $0 -b feature-auth -- claude                                    # Run claude directly
+  $0                                                              # Use current directory (no git)
 EOF
 }
 
@@ -67,6 +75,8 @@ BRANCH_NAME=""
 CONTAINER_COMMAND=()
 USE_GIT=0
 GCP_CREDS_PATH=""
+VERTEX_PROJECT_ID="${ANTHROPIC_VERTEX_PROJECT_ID:-}"
+VERTEX_REGION="${CLOUD_ML_REGION:-us-central1}"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -76,6 +86,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --gcp-credentials)
             GCP_CREDS_PATH="$2"
+            shift 2
+            ;;
+        --vertex-project-id)
+            VERTEX_PROJECT_ID="$2"
+            shift 2
+            ;;
+        --vertex-region)
+            VERTEX_REGION="$2"
             shift 2
             ;;
         -h|--help)
@@ -151,12 +169,30 @@ else
     echo "Mounting current directory: $WORKTREE_DIR (rw)"
 fi
 
-# Handle GCP credential injection
+# Handle GCP credential injection and Vertex AI configuration
+# Check default credential path if not explicitly provided
+if [[ -z "$GCP_CREDS_PATH" ]]; then
+    GCP_CREDS_PATH="$GCP_CREDS_DEFAULT"
+fi
+
 CREDENTIAL_ARGS=()
-if [[ -n "$GCP_CREDS_PATH" && -f "$GCP_CREDS_PATH" ]]; then
+if [[ -f "$GCP_CREDS_PATH" ]]; then
     echo "Injecting GCP credentials from: $GCP_CREDS_PATH"
     GCP_CREDS_B64=$(base64 -w 0 "$GCP_CREDS_PATH")
     CREDENTIAL_ARGS+=("-e" "GCP_CREDENTIALS_B64=$GCP_CREDS_B64")
+    # Set the path where entrypoint.sh will write the credentials
+    CREDENTIAL_ARGS+=("-e" "GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/gcloud/application_default_credentials.json")
+
+    # Enable Vertex AI for Claude Code if credentials provided
+    if [[ -z "$VERTEX_PROJECT_ID" ]]; then
+        echo "WARNING: GCP credentials provided but --vertex-project-id not set."
+        echo "         Claude Code Vertex AI integration will not work without a project ID."
+    else
+        echo "Configuring Vertex AI: project=$VERTEX_PROJECT_ID, region=$VERTEX_REGION"
+        CREDENTIAL_ARGS+=("-e" "ANTHROPIC_VERTEX_PROJECT_ID=$VERTEX_PROJECT_ID")
+        CREDENTIAL_ARGS+=("-e" "CLOUD_ML_REGION=$VERTEX_REGION")
+        CREDENTIAL_ARGS+=("-e" "CLAUDE_CODE_USE_VERTEX=true")
+    fi
 fi
 
 # Start the container
@@ -180,9 +216,6 @@ docker run --rm -it \
     -e ANTHROPIC_API_KEY \
     -e ANTHROPIC_MODEL \
     -e ANTHROPIC_SMALL_FAST_MODEL \
-    -e ANTHROPIC_VERTEX_PROJECT_ID \
-    -e CLOUD_ML_REGION \
-    -e CLAUDE_CODE_USE_VERTEX \
     "$IMAGE_NAME" "${CONTAINER_COMMAND[@]}"
 
 # Remove the worktree after exiting the container

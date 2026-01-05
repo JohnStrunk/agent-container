@@ -15,13 +15,20 @@ $0: Launch VM from bootc image
 Usage: $0 [options]
 
 Options:
-  --gcp-credentials <path>    Path to GCP service account JSON key file
-  -h, --help                  Show this help
+  --gcp-credentials <path>       Path to GCP service account JSON key file
+                                 (default: ~/.config/gcloud/application_default_credentials.json if exists)
+  --vertex-project-id <id>       Google Cloud project ID for Vertex AI
+                                 (default: \$ANTHROPIC_VERTEX_PROJECT_ID)
+  --vertex-region <region>       Google Cloud region for Vertex AI
+                                 (default: \$CLOUD_ML_REGION or us-central1)
+  -h, --help                     Show this help
 
 The script will:
 1. Build bootc image if source files changed
 2. Generate qcow2 disk if bootc image updated
 3. Apply terraform to launch VM
+
+If GCP credentials are not provided, defaults to: ~/.config/gcloud/application_default_credentials.json
 
 EOF
 }
@@ -71,13 +78,23 @@ needs_qcow2_rebuild() {
     return 1
 }
 
-# Parse arguments
+# Parse arguments with defaults from environment
 GCP_CREDS_PATH=""
+VERTEX_PROJECT_ID="${ANTHROPIC_VERTEX_PROJECT_ID:-}"
+VERTEX_REGION="${CLOUD_ML_REGION:-us-central1}"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --gcp-credentials)
             GCP_CREDS_PATH="$2"
+            shift 2
+            ;;
+        --vertex-project-id)
+            VERTEX_PROJECT_ID="$2"
+            shift 2
+            ;;
+        --vertex-region)
+            VERTEX_REGION="$2"
             shift 2
             ;;
         -h|--help)
@@ -123,22 +140,32 @@ fi
 # Step 3: Prepare terraform variables
 cd "$TERRAFORM_DIR"
 
-# Handle GCP credentials
+# Handle GCP credentials and Vertex AI configuration
 if [[ -z "$GCP_CREDS_PATH" ]]; then
     GCP_CREDS_PATH="$GCP_CREDS_DEFAULT"
 fi
 
-TFVARS=""
+TFVARS=()
 if [[ -f "$GCP_CREDS_PATH" ]]; then
     echo "Using GCP credentials from: $GCP_CREDS_PATH"
-    TFVARS="-var gcp_service_account_key_path=$GCP_CREDS_PATH"
+    TFVARS+=("-var" "gcp_service_account_key_path=$GCP_CREDS_PATH")
+
+    # Add Vertex AI configuration if provided
+    if [[ -n "$VERTEX_PROJECT_ID" ]]; then
+        echo "Configuring Vertex AI: project=$VERTEX_PROJECT_ID, region=$VERTEX_REGION"
+        TFVARS+=("-var" "vertex_project_id=$VERTEX_PROJECT_ID")
+        TFVARS+=("-var" "vertex_region=$VERTEX_REGION")
+    else
+        echo "WARNING: GCP credentials provided but --vertex-project-id not set."
+        echo "         Claude Code Vertex AI integration will not work without a project ID."
+    fi
 fi
 
 # Step 4: Apply terraform
 echo "Checking terraform plan..."
-if ! terraform plan -detailed-exitcode "$TFVARS" > /dev/null 2>&1; then
+if ! terraform plan -detailed-exitcode "${TFVARS[@]}" > /dev/null 2>&1; then
     echo "Applying terraform changes..."
-    terraform apply -auto-approve "$TFVARS"
+    terraform apply -auto-approve "${TFVARS[@]}"
 else
     echo "No terraform changes needed, VM already up-to-date"
 fi
