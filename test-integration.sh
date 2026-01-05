@@ -49,6 +49,11 @@ Options:
   --rebuild                  Force rebuild (bypass Docker cache)
   -h, --help                 Show this help
 
+Credentials are detected in this order:
+  1. --gcp-credentials <path> flag (highest priority)
+  2. GOOGLE_APPLICATION_CREDENTIALS environment variable
+  3. Default: ~/.config/gcloud/application_default_credentials.json
+
 Examples:
   $0 --container
   $0 --vm
