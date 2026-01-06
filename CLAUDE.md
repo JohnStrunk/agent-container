@@ -30,6 +30,21 @@ pwd
 
 → See [vm/CLAUDE.md](vm/CLAUDE.md) for detailed instructions
 
+## Integration Tests
+
+Before committing changes that affect environment setup (Dockerfiles,
+Terraform configs, credential injection, or `common/` configs), run
+integration tests:
+
+```bash
+./test-integration.sh --all
+```
+
+This validates that AI assistants can start and operate correctly after your
+changes.
+
+See design: `docs/plans/2026-01-05-integration-tests-design.md`
+
 ## Common Resources
 
 Both approaches share resources from `common/`:
