@@ -245,8 +245,8 @@ resource "libvirt_domain" "debian_vm" {
             network = libvirt_network.default.name
           }
         }
-        addresses          = var.vm_ip != "" ? [var.vm_ip] : null
-        wait_for_lease     = true
+        addresses      = var.vm_ip != "" ? [var.vm_ip] : null
+        wait_for_lease = true
       }
     ]
 
@@ -266,6 +266,34 @@ resource "libvirt_domain" "debian_vm" {
         }
       }
     ]
+
+    # Mount host worktree directory (if provided)
+    filesystems = concat(
+      var.worktree_path != "" ? [
+        {
+          source = {
+            path = var.worktree_path
+          }
+          target = {
+            dir = "worktree"
+          }
+          readonly   = false
+          accessmode = "mapped"
+        }
+      ] : [],
+      var.main_repo_path != "" ? [
+        {
+          source = {
+            path = var.main_repo_path
+          }
+          target = {
+            dir = "mainrepo"
+          }
+          readonly   = false
+          accessmode = "mapped"
+        }
+      ] : []
+    )
   }
 }
 
