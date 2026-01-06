@@ -1,0 +1,46 @@
+#!/bin/bash
+
+set -e -o pipefail
+
+WORKTREE_BASE_DIR=~/src/worktrees
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+function usage {
+    cat - <<EOF
+agent-vm: Unified VM workflow for AI coding agents
+
+Usage: $0 [options] [-b <branch_name>] [-- command...]
+
+Options:
+  -b, --branch <name>         Branch name for git worktree
+  --memory <MB>               VM memory in MB (default: 4096, creation only)
+  --vcpu <count>              Virtual CPUs (default: 4, creation only)
+  --disk <size>               Disk size like 60G (default: 40G, creation only)
+  --list                      List all VMs and their status
+  --stop                      Stop VM (requires -b)
+  --destroy                   Destroy VM and workspace (requires -b)
+  --cleanup                   Destroy all stopped VMs
+  -h, --help                  Show this help
+
+Arguments:
+  command...                  Optional command to execute in VM
+                              (connection closes after execution)
+
+Examples:
+  $0 -b feature-auth                    # Create/connect to VM
+  $0 -b feature-auth -- claude          # Run claude directly
+  $0 -b big-build --memory 16384        # Create VM with 16GB RAM
+  $0 --list                             # List all VMs
+  $0 -b feature-auth --destroy          # Destroy VM
+
+Storage:
+  * Worktrees: $WORKTREE_BASE_DIR
+  * Terraform state: vm/.terraform/
+  * SSH keys: vm/.ssh/vm-ssh-key-<vm-name>
+
+Multi-VM:
+  * Each branch gets its own VM via Terraform workspaces
+  * Run same command again to reconnect (opens 2nd terminal)
+  * VMs persist after exit (not destroyed like containers)
+EOF
+}
