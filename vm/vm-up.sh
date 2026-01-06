@@ -75,6 +75,12 @@ fi
 
 TERRAFORM_VARS+=(-var="network_subnet_third_octet=$NETWORK_SUBNET")
 
+# Auto-detect if terraform init is needed (first-time run or missing lock file)
+if [[ ! -d ".terraform" ]] || [[ ! -f ".terraform.lock.hcl" ]]; then
+  echo "Terraform not initialized. Running terraform init..."
+  terraform init
+fi
+
 terraform apply --auto-approve "${TERRAFORM_VARS[@]}"
 
 VM_IP=$(terraform output -raw vm_ip)
