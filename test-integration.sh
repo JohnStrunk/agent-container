@@ -12,7 +12,6 @@ GCP_CREDS_PATH=""
 # Test configuration
 TEST_TYPE=""
 FORCE_REBUILD=false
-TEST_STATUS="unknown"  # Track overall test status for final message
 
 # Exit codes
 EXIT_SUCCESS=0
@@ -423,8 +422,9 @@ test_vm() {
     log "[VM] Testing Claude Code in VM..."
 
     # Execute test via SSH (SSH connectivity already verified)
+    # Use login shell (-l) to source /etc/profile.d scripts for GCP env vars
     if ! run_with_timeout 90 ssh -i ./vm-ssh-key -o StrictHostKeyChecking=no \
-        "$vm_user@${vm_ip}" "bash -s" < <(generate_test_command); then
+        "$vm_user@${vm_ip}" "bash -l -s" < <(generate_test_command); then
         log_error "Claude test failed in VM"
         cd .. || return 1
         return 1
