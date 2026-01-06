@@ -12,6 +12,7 @@ GCP_CREDS_PATH=""
 # Test configuration
 TEST_TYPE=""
 FORCE_REBUILD=false
+TEST_STATUS="unknown"  # Track overall test status for final message
 
 # Exit codes
 EXIT_SUCCESS=0
@@ -233,6 +234,18 @@ cleanup_all() {
         cleanup_vm
     fi
 
+    # Print final status message
+    echo ""
+    echo "========================================"
+    if [[ $exit_code -eq 0 ]]; then
+        echo "RESULT: ALL TESTS PASSED ✓"
+    else
+        echo "RESULT: TESTS FAILED ✗"
+        echo "Exit code: $exit_code"
+    fi
+    echo "========================================"
+    echo ""
+
     exit "$exit_code"
 }
 
@@ -330,6 +343,11 @@ test_vm() {
         return 1
     }
 
+    # Source common VM functions
+    # shellcheck source=vm/vm-common.sh
+    # shellcheck disable=SC1091
+    source "./vm-common.sh"
+
     # Step 1: Check for existing VM and destroy it
     log "[VM] Checking for existing VM..."
     if terraform state list 2>/dev/null | grep -q libvirt_domain.agent_vm; then
@@ -367,29 +385,46 @@ test_vm() {
 
     log "[VM] VM IP: $vm_ip"
 
-    # Step 4: Wait for cloud-init to complete
-    log "[VM] Waiting for cloud-init to complete..."
-
-    local ssh_cmd="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i vm_ssh_key"
-
-    if ! run_with_timeout 120 bash -c "
-        while ! $ssh_cmd claude@${vm_ip} 'cloud-init status --wait' 2>/dev/null; do
-            sleep 5
-        done
-    "; then
-        log_error "cloud-init failed or timed out"
+    # Get VM default user
+    local vm_user
+    vm_user=$(terraform output -raw default_user 2>/dev/null || echo "")
+    if [[ -z "$vm_user" ]]; then
+        log_error "Failed to get VM username from terraform output"
         cd .. || return 1
         return 1
     fi
 
-    log "[VM] cloud-init complete"
+    log "[VM] VM user: $vm_user"
+
+    # Step 4: Verify SSH connectivity
+    # Note: Terraform's null_resource.wait_for_cloud_init already confirmed cloud-init completed
+    # Give the VM a few seconds for SSH service to be fully ready for user connections
+    log "[VM] Waiting for SSH service to be ready..."
+    sleep 5
+
+    log "[VM] Verifying SSH connectivity as $vm_user..."
+
+    # Use vm_ssh function with retry logic
+    local retry_count=0
+    local max_retries=30
+    until vm_ssh "." "$vm_user" "$vm_ip" 'echo SSH connection successful' >/dev/null 2>&1; do
+        retry_count=$((retry_count + 1))
+        if [[ $retry_count -ge $max_retries ]]; then
+            log_error "SSH connection as $vm_user failed after $max_retries attempts"
+            cd .. || return 1
+            return 1
+        fi
+        sleep 2
+    done
+
+    log "[VM] SSH connectivity verified"
 
     # Step 5: Run Claude test via SSH
     log "[VM] Testing Claude Code in VM..."
 
-    # shellcheck disable=SC2086
-    if ! run_with_timeout 90 $ssh_cmd "claude@${vm_ip}" \
-        "bash -s" < <(generate_test_command); then
+    # Execute test via SSH (SSH connectivity already verified)
+    if ! run_with_timeout 90 ssh -i ./vm-ssh-key -o StrictHostKeyChecking=no \
+        "$vm_user@${vm_ip}" "bash -s" < <(generate_test_command); then
         log_error "Claude test failed in VM"
         cd .. || return 1
         return 1
@@ -447,7 +482,7 @@ main() {
         fi
     fi
 
-    log_step "All Tests Passed!"
+    # Success - cleanup_all will print the final status message
     exit "$EXIT_SUCCESS"
 }
 
