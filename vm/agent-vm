@@ -48,6 +48,25 @@ function destroy_vm {
   echo "VM destroyed: $vm_name"
 }
 
+function setup_worktree {
+  local worktree_dir="$1"
+  local branch_name="$2"
+
+  if [[ -d "$worktree_dir" ]]; then
+    echo "Worktree for branch '$branch_name' already exists at $worktree_dir."
+    return 0
+  fi
+
+  # Check if branch exists
+  if git show-ref --verify --quiet "refs/heads/$branch_name"; then
+    echo "Adding worktree for existing branch '$branch_name'..."
+    git worktree add "$worktree_dir" "$branch_name"
+  else
+    echo "Creating branch '$branch_name' from current HEAD and adding worktree..."
+    git worktree add -b "$branch_name" "$worktree_dir"
+  fi
+}
+
 function cleanup_stopped_vms {
   echo "Cleaning up stopped VMs..."
   local cleaned_count=0
@@ -261,4 +280,29 @@ if [[ "$ACTION" == "stop" || "$ACTION" == "destroy" ]]; then
     destroy_vm "$VM_NAME" "$VM_NAME"
     exit 0
   fi
+fi
+
+# Determine if we should use git worktrees
+if [[ -n "$BRANCH_NAME" ]]; then
+  if [[ ! -d .git ]]; then
+    echo "Error: Must be in a git repository to use -b option" >&2
+    exit 1
+  fi
+
+  USE_GIT=1
+  REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
+  WORKTREE_DIR="$WORKTREE_BASE_DIR/${REPO_NAME}-${BRANCH_NAME}"
+  VM_NAME="${REPO_NAME}-${BRANCH_NAME}"
+
+  # Create worktree base directory if needed
+  mkdir -p "$WORKTREE_BASE_DIR"
+
+  # Setup worktree
+  setup_worktree "$WORKTREE_DIR" "$BRANCH_NAME"
+
+  # Get main repo directory for git operations
+  MAIN_REPO_DIR="$(git rev-parse --show-toplevel)"
+else
+  echo "Error: -b <branch> is required" >&2
+  exit 1
 fi
