@@ -5,6 +5,49 @@ set -e -o pipefail
 WORKTREE_BASE_DIR=~/src/worktrees
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+function stop_vm {
+  local vm_name="$1"
+
+  if ! vm_domain_exists "$vm_name"; then
+    echo "Error: VM does not exist: $vm_name" >&2
+    exit 1
+  fi
+
+  if ! vm_is_running "$vm_name"; then
+    echo "VM is already stopped: $vm_name"
+    exit 0
+  fi
+
+  echo "Stopping VM: $vm_name"
+  virsh shutdown "$vm_name"
+  echo "VM stopped (graceful shutdown initiated)."
+}
+
+function destroy_vm {
+  local vm_name="$1"
+  local workspace_name="$2"
+
+  echo "Destroying VM: $vm_name"
+
+  # Stop and destroy domain if exists
+  if vm_domain_exists "$vm_name"; then
+    virsh destroy "$vm_name" 2>/dev/null || true
+    virsh undefine "$vm_name" 2>/dev/null || true
+  fi
+
+  # Switch to workspace and destroy Terraform resources
+  if workspace_exists "$workspace_name"; then
+    terraform workspace select "$workspace_name" >/dev/null 2>&1
+    terraform destroy -auto-approve
+
+    # Delete workspace
+    terraform workspace select default >/dev/null 2>&1
+    terraform workspace delete "$workspace_name"
+  fi
+
+  echo "VM destroyed: $vm_name"
+}
+
 function cleanup_stopped_vms {
   echo "Cleaning up stopped VMs..."
   local cleaned_count=0
@@ -190,4 +233,32 @@ fi
 if [[ "$ACTION" == "cleanup" ]]; then
   cleanup_stopped_vms
   exit 0
+fi
+
+# Stop and destroy require branch name
+if [[ "$ACTION" == "stop" || "$ACTION" == "destroy" ]] && [[ -z "$BRANCH_NAME" ]]; then
+  echo "Error: --stop and --destroy require -b <branch_name>" >&2
+  exit 1
+fi
+
+# Handle stop/destroy actions
+if [[ "$ACTION" == "stop" || "$ACTION" == "destroy" ]]; then
+  # Determine VM naming (needed for stop/destroy)
+  if [[ ! -d .git ]]; then
+    echo "Error: Must be in a git repository to use -b option" >&2
+    exit 1
+  fi
+
+  REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
+  VM_NAME="${REPO_NAME}-${BRANCH_NAME}"
+
+  if [[ "$ACTION" == "stop" ]]; then
+    stop_vm "$VM_NAME"
+    exit 0
+  fi
+
+  if [[ "$ACTION" == "destroy" ]]; then
+    destroy_vm "$VM_NAME" "$VM_NAME"
+    exit 0
+  fi
 fi
