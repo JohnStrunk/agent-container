@@ -79,3 +79,25 @@ variable "network_subnet_third_octet" {
     error_message = "Network subnet third octet must be between 0 and 255."
   }
 }
+
+variable "worktree_path" {
+  description = "Path to host worktree directory to mount in VM"
+  type        = string
+  default     = ""
+}
+
+variable "main_repo_path" {
+  description = "Path to main git repository to mount in VM (for worktree commits)"
+  type        = string
+  default     = ""
+}
+
+variable "vm_ip" {
+  description = "Static IP address for this VM (e.g., 192.168.123.10)"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.vm_ip == "" || can(regex("^192\\.168\\.\\d+\\.\\d+$", var.vm_ip))
+    error_message = "VM IP must be in format 192.168.X.Y or empty for DHCP."
+  }
+}
