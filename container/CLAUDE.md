@@ -235,14 +235,24 @@ manually fix all reported issues
 
 ### GCP Credential Injection
 
-For Vertex AI, use credential file injection instead of mounting:
+Credentials are detected in this order:
+
+1. `--gcp-credentials <path>` flag (highest priority)
+2. `GOOGLE_APPLICATION_CREDENTIALS` environment variable
+3. Default: `~/.config/gcloud/application_default_credentials.json`
+
+Examples:
 
 ```bash
 # Auto-detect from default location
 start-work -b feature
 
-# Custom path
+# Custom path via flag
 start-work -b feature --gcp-credentials ~/my-sa.json
+
+# Custom path via env var
+export GOOGLE_APPLICATION_CREDENTIALS=~/my-sa.json
+start-work -b feature
 ```
 
 Credentials are ephemeral and deleted when container exits.
@@ -287,6 +297,13 @@ Credentials are ephemeral and deleted when container exits.
 - No Docker group access (no Docker socket)
 - Proper permission handling for mounted workspace
 - Credentials written with restrictive permissions (600)
+
+### Environment Identification
+
+The container includes an environment marker file at
+`/etc/agent-environment` containing `agent-container`. This identifies the
+execution context and is used to prevent integration tests from running
+inside the container (which lacks Docker and VM support).
 
 ## Common Tasks
 
@@ -366,6 +383,29 @@ No direct tool commands are available.
    - Test early and often during development
    - Fix issues immediately when found
    - Re-run checks until all pass
+
+### Integration Tests
+
+Run end-to-end tests to validate container environment:
+
+```bash
+# From repository root
+./test-integration.sh --container
+```
+
+This tests:
+
+- Docker image builds successfully
+- Credentials inject correctly
+- Config files deploy from `common/homedir/`
+- Claude Code starts and responds to prompts
+
+**When to run:**
+
+- Before committing Dockerfile changes
+- Before committing changes to `common/homedir/` configs
+- Before committing entrypoint script changes
+- After updating package lists in `common/packages/`
 
 ## Maintenance Notes
 

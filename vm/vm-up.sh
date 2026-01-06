@@ -11,7 +11,13 @@ USER_GID=$(id -g)
 
 # Auto-detect GCP credentials (same as container version)
 GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
-GCP_CREDS_PATH="${GCP_CREDENTIALS_PATH:-$GCP_CREDS_DEFAULT}"
+
+# Apply credential precedence: GOOGLE_APPLICATION_CREDENTIALS → default
+if [[ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then
+    GCP_CREDS_PATH="$GOOGLE_APPLICATION_CREDENTIALS"
+else
+    GCP_CREDS_PATH="$GCP_CREDS_DEFAULT"
+fi
 
 # Build terraform variable arguments
 TERRAFORM_VARS=(
@@ -68,6 +74,12 @@ if [ -z "$NETWORK_SUBNET" ]; then
 fi
 
 TERRAFORM_VARS+=(-var="network_subnet_third_octet=$NETWORK_SUBNET")
+
+# Auto-detect if terraform init is needed (first-time run or missing lock file)
+if [[ ! -d ".terraform" ]] || [[ ! -f ".terraform.lock.hcl" ]]; then
+  echo "Terraform not initialized. Running terraform init..."
+  terraform init
+fi
 
 terraform apply --auto-approve "${TERRAFORM_VARS[@]}"
 

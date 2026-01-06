@@ -5,6 +5,8 @@ manage_etc_hosts: true
 
 write_files:
 %{ if gcp_service_account_key != "" ~}
+  # GCP credentials must be readable by non-root user running Claude Code
+  # VM isolation provides security, so 0644 is appropriate here
   - path: /etc/google/application_default_credentials.json
     permissions: '0644'
     content: |
@@ -16,6 +18,10 @@ write_files:
     content: |
       ${indent(6, file_data.content)}
 %{ endfor ~}
+  - path: /etc/agent-environment
+    permissions: '0644'
+    content: |
+      agent-vm
 
 users:
   - name: ${default_user}
@@ -143,6 +149,20 @@ runcmd:
   - mkdir -p /home/${default_user}/workspace
   - chown -R ${user_uid}:${user_gid} /home/${default_user}/workspace
   - chmod 755 /home/${default_user}/workspace
+
+  # Fix .bash_logout to not affect exit codes (for integration tests)
+  # clear_console fails in non-console SSH sessions, overriding script exit codes
+  - |
+    cat > /home/${default_user}/.bash_logout <<'BASH_LOGOUT_EOF'
+    # ~/.bash_logout: executed by bash(1) when login shell exits.
+
+    # when leaving the console clear the screen to increase privacy
+
+    if [ "$SHLVL" = 1 ]; then
+        [ -x /usr/bin/clear_console ] && /usr/bin/clear_console -q || true
+    fi
+    BASH_LOGOUT_EOF
+  - chown ${user_uid}:${user_gid} /home/${default_user}/.bash_logout
 
 
 package_update: true
