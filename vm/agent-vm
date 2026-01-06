@@ -67,6 +67,24 @@ function setup_worktree {
   fi
 }
 
+function warn_resource_overrides_ignored {
+  if [[ -n "$MEMORY_OVERRIDE" || -n "$VCPU_OVERRIDE" || -n "$DISK_OVERRIDE" ]]; then
+    echo "WARNING: VM already exists. Resource options ignored."
+    echo "To apply new resources, destroy and recreate:"
+    echo "  agent-vm -b $BRANCH_NAME --destroy"
+    if [[ -n "$MEMORY_OVERRIDE" ]]; then
+      echo "  agent-vm -b $BRANCH_NAME --memory $MEMORY_OVERRIDE"
+    fi
+    if [[ -n "$VCPU_OVERRIDE" ]]; then
+      echo "  agent-vm -b $BRANCH_NAME --vcpu $VCPU_OVERRIDE"
+    fi
+    if [[ -n "$DISK_OVERRIDE" ]]; then
+      echo "  agent-vm -b $BRANCH_NAME --disk $DISK_OVERRIDE"
+    fi
+    echo ""
+  fi
+}
+
 function cleanup_stopped_vms {
   echo "Cleaning up stopped VMs..."
   local cleaned_count=0
@@ -331,4 +349,108 @@ if [ -z "$NETWORK_SUBNET" ]; then
     # Not inside a VM on 192.168.x.x, use default
     NETWORK_SUBNET=123
   fi
+fi
+
+# Check if workspace exists
+if workspace_exists "$VM_NAME"; then
+  echo "VM workspace exists: $VM_NAME"
+
+  # Select workspace
+  terraform workspace select "$VM_NAME"
+
+  # Check if VM domain exists
+  if vm_domain_exists "$VM_NAME"; then
+    if vm_is_running "$VM_NAME"; then
+      echo "VM is already running: $VM_NAME"
+      warn_resource_overrides_ignored
+    else
+      echo "VM exists but is stopped. Starting..."
+      warn_resource_overrides_ignored
+      virsh start "$VM_NAME"
+      echo "VM started: $VM_NAME"
+    fi
+  else
+    echo "Warning: Workspace exists but VM domain missing. Recreating..."
+    # Workspace exists but VM doesn't - clean up and recreate
+    terraform workspace select default
+    terraform workspace delete "$VM_NAME"
+
+    # Fall through to creation below
+    CREATE_NEW_VM=1
+  fi
+else
+  CREATE_NEW_VM=1
+fi
+
+# Create new VM if needed
+if [[ "${CREATE_NEW_VM:-0}" == "1" ]]; then
+  echo "Creating new VM: $VM_NAME"
+
+  # Create workspace
+  terraform workspace new "$VM_NAME"
+
+  # Find available IP
+  VM_IP=$(find_available_ip "$SCRIPT_DIR" "$NETWORK_SUBNET")
+  echo "Allocated IP: $VM_IP"
+
+  # Build terraform variables
+  TERRAFORM_VARS=(
+    -var="vm_name=$VM_NAME"
+    -var="vm_hostname=$VM_NAME"
+    -var="worktree_path=$WORKTREE_DIR"
+    -var="main_repo_path=$MAIN_REPO_DIR"
+    -var="vm_ip=$VM_IP"
+    -var="network_subnet_third_octet=$NETWORK_SUBNET"
+    -var="user_uid=$(id -u)"
+    -var="user_gid=$(id -g)"
+  )
+
+  # Add resource overrides if provided
+  if [[ -n "$MEMORY_OVERRIDE" ]]; then
+    TERRAFORM_VARS+=(-var="vm_memory=$MEMORY_OVERRIDE")
+  fi
+  if [[ -n "$VCPU_OVERRIDE" ]]; then
+    TERRAFORM_VARS+=(-var="vm_vcpu=$VCPU_OVERRIDE")
+  fi
+  if [[ -n "$DISK_OVERRIDE" ]]; then
+    # Convert disk size to bytes (e.g., 60G -> 64424509440)
+    DISK_BYTES=$(numfmt --from=iec "${DISK_OVERRIDE}")
+    TERRAFORM_VARS+=(-var="vm_disk_size=$DISK_BYTES")
+  fi
+
+  # Add GCP credentials if available
+  GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
+  if [[ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then
+    GCP_CREDS_PATH="$GOOGLE_APPLICATION_CREDENTIALS"
+  else
+    GCP_CREDS_PATH="$GCP_CREDS_DEFAULT"
+  fi
+
+  if [[ -f "$GCP_CREDS_PATH" ]]; then
+    echo "Injecting GCP credentials from: $GCP_CREDS_PATH"
+    TERRAFORM_VARS+=(-var="gcp_service_account_key_path=$GCP_CREDS_PATH")
+
+    if [[ -n "$ANTHROPIC_VERTEX_PROJECT_ID" ]]; then
+      TERRAFORM_VARS+=(-var="vertex_project_id=$ANTHROPIC_VERTEX_PROJECT_ID")
+    fi
+
+    if [[ -n "$CLOUD_ML_REGION" ]]; then
+      TERRAFORM_VARS+=(-var="vertex_region=$CLOUD_ML_REGION")
+    fi
+  fi
+
+  # Initialize terraform if needed
+  if [[ ! -d ".terraform" ]] || [[ ! -f ".terraform.lock.hcl" ]]; then
+    echo "Initializing Terraform..."
+    terraform init
+  fi
+
+  # Apply terraform
+  echo "Provisioning VM with Terraform..."
+  terraform apply -auto-approve "${TERRAFORM_VARS[@]}"
+
+  # Remove old SSH key from known_hosts
+  ssh-keygen -R "$VM_IP" 2>/dev/null || true
+
+  echo "VM created successfully: $VM_NAME"
 fi
