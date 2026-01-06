@@ -268,32 +268,34 @@ resource "libvirt_domain" "debian_vm" {
     ]
 
     # Mount host worktree directory (if provided)
-    filesystems = concat(
-      var.worktree_path != "" ? [
-        {
-          source = {
-            dir = var.worktree_path
-          }
-          target = {
-            dir = "worktree"
-          }
-          readonly   = false
-          accessmode = "mapped"
-        }
-      ] : [],
-      var.main_repo_path != "" ? [
-        {
-          source = {
-            dir = var.main_repo_path
-          }
-          target = {
-            dir = "mainrepo"
-          }
-          readonly   = false
-          accessmode = "mapped"
-        }
-      ] : []
-    )
+    # NOTE: Filesystem mounts disabled for now due to nested virtualization limitations
+    # filesystems = concat(
+    #   var.worktree_path != "" ? [
+    #     {
+    #       source = {
+    #         dir = var.worktree_path
+    #       }
+    #       target = {
+    #         dir = "worktree"
+    #       }
+    #       readonly   = false
+    #       accessmode = "mapped"
+    #       }
+    #   ] : [],
+    #   var.main_repo_path != "" ? [
+    #     {
+    #       source = {
+    #         dir = var.main_repo_path
+    #       }
+    #       target = {
+    #         dir = "mainrepo"
+    #       }
+    #       readonly   = false
+    #       accessmode = "mapped"
+    #     }
+    #   ] : []
+    # )
+    filesystems = []
   }
 }
 
