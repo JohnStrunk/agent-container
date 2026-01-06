@@ -454,3 +454,46 @@ if [[ "${CREATE_NEW_VM:-0}" == "1" ]]; then
 
   echo "VM created successfully: $VM_NAME"
 fi
+
+# Get VM IP and user
+VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
+VM_USER=$(terraform output -raw default_user 2>/dev/null)
+SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
+
+# Wait for VM to be ready
+echo "Waiting for VM to be ready..."
+MAX_WAIT=300
+ELAPSED=0
+while ! ssh -i "$SSH_KEY" -o ConnectTimeout=5 -o BatchMode=yes \
+     -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null; do
+  sleep 5
+  ELAPSED=$((ELAPSED + 5))
+  if [[ $ELAPSED -ge $MAX_WAIT ]]; then
+    echo "ERROR: VM failed to start within 5 minutes" >&2
+    echo "Check cloud-init logs:"
+    echo "  ssh -i $SSH_KEY root@$VM_IP 'tail -100 /var/log/cloud-init-output.log'"
+    exit 1
+  fi
+done
+
+# Verify filesystem mounts
+echo "Verifying filesystem mounts..."
+if ! ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+     "mountpoint -q /worktree && mountpoint -q /mainrepo" 2>/dev/null; then
+  echo "WARNING: Filesystem mounts may not be available"
+  echo "Check with: virsh dumpxml $VM_NAME | grep filesystem"
+fi
+
+# Connect to VM
+echo "Connecting to VM: $VM_NAME (IP: $VM_IP)"
+echo ""
+
+if [[ ${#VM_COMMAND[@]} -gt 0 ]]; then
+  # Execute command and exit
+  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+    "cd /worktree 2>/dev/null || cd ~; ${VM_COMMAND[*]}"
+else
+  # Interactive session
+  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+    -t "cd /worktree 2>/dev/null || cd ~; exec bash -l"
+fi
