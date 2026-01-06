@@ -60,6 +60,21 @@ runcmd:
   # Add user to libvirt and kvm groups for virtualization access
   - usermod -aG libvirt ${default_user}
   - usermod -aG kvm ${default_user}
+  # Mount shared filesystems if available
+  - mkdir -p /worktree /mainrepo
+  - |
+    if [ -d /sys/bus/virtio/drivers/9pnet_virtio ]; then
+      # Mount worktree if available
+      if grep -q worktree /proc/mounts 2>/dev/null || \
+         mount -t 9p -o trans=virtio,version=9p2000.L,rw,_netdev worktree /worktree 2>/dev/null; then
+        echo "worktree /worktree 9p trans=virtio,version=9p2000.L,rw,_netdev 0 0" >> /etc/fstab
+      fi
+      # Mount main repo if available
+      if grep -q mainrepo /proc/mounts 2>/dev/null || \
+         mount -t 9p -o trans=virtio,version=9p2000.L,rw,_netdev mainrepo /mainrepo 2>/dev/null; then
+        echo "mainrepo /mainrepo 9p trans=virtio,version=9p2000.L,rw,_netdev 0 0" >> /etc/fstab
+      fi
+    fi
   # Initialize libvirt default storage pool for nested virtualization
   - mkdir -p /var/lib/libvirt/images
   - chmod 755 /var/lib/libvirt/images
@@ -145,10 +160,16 @@ runcmd:
   - chown -R ${user_uid}:${user_gid} /home/${default_user}
   - rm -rf /tmp/homedir
 
-  # Create workspace directory for Claude Code
+  # Create workspace directory (fallback if no filesystem mount)
   - mkdir -p /home/${default_user}/workspace
   - chown -R ${user_uid}:${user_gid} /home/${default_user}/workspace
-  - chmod 755 /home/${default_user}/workspace
+  # Set /worktree as default if mounted, otherwise workspace
+  - |
+    if mountpoint -q /worktree; then
+      echo "cd /worktree" >> /home/${default_user}/.bashrc
+    else
+      echo "cd ~/workspace" >> /home/${default_user}/.bashrc
+    fi
 
   # Fix .bash_logout to not affect exit codes (for integration tests)
   # clear_console fails in non-console SSH sessions, overriding script exit codes
