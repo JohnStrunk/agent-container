@@ -52,74 +52,75 @@ sudo usermod -aG libvirt $USER
 
 Follow instructions at: <https://www.terraform.io/downloads>
 
-## Quick Start
+## Getting Started
 
-### 1. Deploy the VM
-
-The `vm-up.sh` script handles Terraform initialization and deployment:
+### Quick Start
 
 ```bash
-cd vm
-./vm-up.sh
+# Create VM and connect
+cd vm/
+./agent-vm -b feature-auth
+
+# Inside VM
+claude  # Start Claude Code
 ```
 
-This script will:
+The VM persists after exit. Reconnect anytime with the same command.
 
-- Initialize Terraform (first run only)
-- Generate SSH keys automatically
-- Auto-detect GCP credentials for Vertex AI (if available)
-- Configure network settings for nested VMs (if applicable)
-- Deploy the VM
+## Usage
 
-### 2. Connect to the VM
-
-Use the helper script to connect via SSH:
+### Basic Workflow
 
 ```bash
-./vm-connect.sh
+# Create/connect to VM for a branch
+./agent-vm -b feature-name
+
+# Run command in VM
+./agent-vm -b feature-name -- claude
+
+# Create VM with custom resources
+./agent-vm -b big-build --memory 16384 --vcpu 8
 ```
 
-**Options:**
-
-- `-r, --root`: Connect as root instead of the default user
-
-**Examples:**
+### Managing VMs
 
 ```bash
-# Connect as default user
-./vm-connect.sh
+# List all VMs
+./agent-vm --list
 
-# Connect as root
-./vm-connect.sh -r
+# Stop VM (keeps workspace)
+./agent-vm -b feature-name --stop
+
+# Destroy VM completely
+./agent-vm -b feature-name --destroy
+
+# Clean up all stopped VMs
+./agent-vm --cleanup
 ```
 
-### 3. Manual Access (Alternative)
-
-**Via Console (auto-login as root):**
+### Multi-VM Workflow
 
 ```bash
-virsh console debian-trixie-vm
-# Press Enter to see root prompt
-# Ctrl+] to exit console
+# Terminal 1
+./agent-vm -b feature-auth
+
+# Terminal 2 (parallel work)
+./agent-vm -b feature-payments
+
+# Terminal 3 (reconnect to first VM)
+./agent-vm -b feature-auth
 ```
 
-**Via SSH (as default user):**
+Each branch gets its own VM, worktree, and IP address.
 
-```bash
-ssh user@<VM_IP>
-```
+### Filesystem Sharing
 
-**Via SSH (as root):**
+Files are shared between host and VM via virtio-9p:
 
-```bash
-ssh root@<VM_IP>
-```
+- `/worktree` - Your branch's worktree (edit on host, build in VM)
+- `/mainrepo` - Main git repository (for commits)
 
-Get VM IP from Terraform outputs:
-
-```bash
-terraform output vm_ip
-```
+Changes on host appear immediately in VM and vice versa.
 
 ## Using AI Coding Agents
 
@@ -141,11 +142,11 @@ gcloud auth application-default login
 export ANTHROPIC_VERTEX_PROJECT_ID="your-gcp-project-id"
 export CLOUD_ML_REGION="us-central1"  # Optional, defaults to us-central1
 
-# Deploy the VM (credentials will be auto-detected)
-./vm-up.sh
+# Create VM (credentials will be auto-detected)
+./agent-vm -b feature-name
 ```
 
-The `vm-up.sh` script will:
+The `agent-vm` script will:
 
 - Automatically detect GCP credentials from
   `~/.config/gcloud/application_default_credentials.json`
@@ -157,15 +158,15 @@ The `vm-up.sh` script will:
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS="~/my-service-account.json"
 export ANTHROPIC_VERTEX_PROJECT_ID="your-gcp-project-id"
-./vm-up.sh
+./agent-vm -b feature-name
 ```
 
 ### Running Claude Code
 
-SSH into the VM and run:
+Connect to the VM and run:
 
 ```bash
-./vm-connect.sh
+./agent-vm -b feature-name
 start-claude  # Recommended - includes MCP servers and plugins
 ```
 
@@ -188,166 +189,25 @@ All agents have access to:
 - **Development Tools**: git, docker, jq, ripgrep
 - **Python Tools**: pre-commit, dvc
 
-## Helper Scripts
-
-### Connecting to the VM
-
-**Connect via SSH:**
-
-```bash
-./vm-connect.sh
-```
-
-This script automatically:
-
-- Ensures the VM is running (calls `vm-up.sh`)
-- Retrieves the VM IP from Terraform
-- Connects via SSH to the VM
-
-**Options:**
-
-- `-r, --root`: Connect as root instead of the default user
-
-**Examples:**
-
-```bash
-# Connect as default user
-./vm-connect.sh
-
-# Connect as root
-./vm-connect.sh -r
-./vm-connect.sh --root
-```
-
-## Syncing Files with VM Workspace
-
-Four helper scripts enable syncing files and git repositories between the
-host and VM workspace:
-
-### Directory Sync
-
-**Push directory to VM:**
-
-```bash
-./vm-dir-push <local-directory> [workspace-subpath]
-
-# Examples:
-./vm-dir-push ./my-project              # → /home/user/workspace/
-./vm-dir-push ./my-project myapp        # → /home/user/workspace/myapp/
-```
-
-**Pull directory from VM:**
-
-```bash
-./vm-dir-pull <local-directory> [workspace-subpath]
-
-# Examples:
-./vm-dir-pull ./my-project              # ← /home/user/workspace/
-./vm-dir-pull ./my-project myapp        # ← /home/user/workspace/myapp/
-```
-
-### Git Repository Sync
-
-**Push git branch to VM:**
-
-```bash
-./vm-git-push <branch-name> [workspace-subpath]
-
-# Examples:
-./vm-git-push feature-auth              # → /home/user/workspace/
-./vm-git-push feature-auth myapp        # → /home/user/workspace/myapp/
-```
-
-**Fetch git branch from VM:**
-
-```bash
-./vm-git-fetch <branch-name> [workspace-subpath]
-
-# Examples:
-./vm-git-fetch feature-auth             # ← /home/user/workspace/
-./vm-git-fetch feature-auth myapp       # ← /home/user/workspace/myapp/
-
-# Then review and merge
-git checkout feature-auth
-git log
-git checkout main
-git merge feature-auth
-```
-
-### Typical Workflow
-
-**For git repositories:**
-
-```bash
-# 1. Push your branch to VM
-./vm-git-push feature-branch
-
-# 2. SSH into VM and work with AI agent
-./vm-connect.sh
-start-claude  # Work on the feature
-
-# 3. Back on host, fetch the changes
-./vm-git-fetch feature-branch
-
-# 4. Review and merge
-git checkout feature-branch
-git log
-git checkout main
-git merge feature-branch
-```
-
-**For simple directories:**
-
-```bash
-# 1. Push directory to VM
-./vm-dir-push ./my-project
-
-# 2. SSH into VM and work
-./vm-connect.sh
-cd ~/workspace/my-project
-# Make changes...
-
-# 3. Pull changes back
-./vm-dir-pull ./my-project
-```
-
 ## Configuration
 
-### Customize VM Settings
+### VM Resource Options
 
-**For most use cases, use environment variables with `vm-up.sh`.**
+Customize VM resources at creation time:
 
-**Advanced:** You can also create a `terraform.tfvars` file for persistent
-configuration:
+```bash
+# Default: 4 vCPU, 4096 MB RAM
+./agent-vm -b feature-name
 
-```hcl
-vm_name     = "my-custom-vm"
-vm_memory   = 4096
-vm_vcpu     = 4
-vm_hostname = "my-hostname"
+# High-resource build
+./agent-vm -b big-build --vcpu 8 --memory 16384
+
+# Custom configuration
+./agent-vm -b custom --vcpu 6 --memory 8192
 ```
 
-Then run `./vm-up.sh` to apply the configuration.
-
-### Available Variables
-
-See `variables.tf` for all configurable options:
-
-- `vm_name`: Virtual machine name
-- `vm_memory`: RAM in MB (default: 4096)
-- `vm_vcpu`: Number of CPUs (default: 4)
-- `vm_disk_size`: Disk size in bytes (default: 40GB)
-- `vm_hostname`: VM hostname
-- `default_user`: Default username (default: user)
-- `user_uid`: User UID for permission mapping (auto-detected by vm-up.sh)
-- `user_gid`: User GID for permission mapping (auto-detected by vm-up.sh)
-- `debian_image_url`: Debian cloud image URL
-- `gcp_service_account_key_path`: Path to GCP service account JSON key
-  (auto-detected by vm-up.sh)
-- `vertex_project_id`: Google Cloud project ID for Vertex AI
-- `vertex_region`: Google Cloud region for Vertex AI (default: us-central1)
-- `network_subnet_third_octet`: Third octet of VM network subnet
-  (192.168.X.0/24) (auto-detected by vm-up.sh, default: 123)
+**Note:** Resource settings only apply at VM creation time and cannot be
+changed after.
 
 ## Nested Virtualization
 
@@ -380,51 +240,27 @@ This is useful for testing VM provisioning or isolating AI agent work.
 
 ### Running Nested VMs
 
-**Network subnets are automatically configured!** The `vm-up.sh`
+**Network subnets are automatically configured!** The `agent-vm`
 script detects if you're running inside a VM and automatically selects
 a different network subnet to avoid conflicts.
 
 ```bash
-# Inside the outer VM, just run vm-up.sh normally
-./vm-up.sh
+# Inside the outer VM, create a nested VM normally
+./agent-vm -b nested-feature
 # Script will detect you're on 192.168.123.x and use 192.168.200.0/24
-```
-
-**How Autodetection Works:**
-
-- Detects if running on `192.168.x.x` network
-- If on `192.168.122.x` or `192.168.123.x` → uses `192.168.200.0/24`
-- Otherwise → uses `192.168.(current+1).0/24`
-- Not on `192.168.x.x` → uses default `192.168.123.0/24`
-
-**Manual Override (Optional):**
-
-You can still manually specify a subnet if needed:
-
-```bash
-export NETWORK_SUBNET=150
-./vm-up.sh
-
-# Or use Terraform directly
-terraform apply -var="network_subnet_third_octet=150"
 ```
 
 **Example Nested Setup:**
 
 ```bash
-# 1. On host: Create outer VM (uses 192.168.123.0/24 by default)
+# 1. On host: Create outer VM
 cd vm
-./vm-up.sh
-ssh user@<OUTER_VM_IP>
+./agent-vm -b outer-feature
 
-# 2. Inside outer VM: Create inner VM (automatically uses different
-# subnet)
-cd ~/workspace
-git clone <your-repo-with-vm>
-cd vm
-./vm-up.sh  # Autodetects outer VM on 192.168.123.x, uses
-192.168.200.0/24
-ssh user@<INNER_VM_IP>
+# 2. Inside outer VM: Create inner VM (automatically uses different subnet)
+cd /worktree
+./vm/agent-vm -b inner-feature
+# Autodetects outer VM on 192.168.123.x, uses 192.168.200.0/24
 ```
 
 ### Features Available for Nested VMs
@@ -439,49 +275,42 @@ The VM is configured with:
 
 ## SSH Key Management
 
-**SSH keys are automatically generated** by Terraform when you first deploy the
-VM. The keys are stored in the `vm/` directory:
+**SSH keys are automatically generated** per-VM when you first create each VM.
+The keys are stored in the `vm/.ssh/` directory, organized by branch:
 
-- `vm-ssh-key` - Private key (used by helper scripts)
-- `vm-ssh-key.pub` - Public key (deployed to the VM)
+- `.ssh/<branch>-key` - Private key
+- `.ssh/<branch>-key.pub` - Public key
 
-**The helper scripts (`vm-connect.sh`, `vm-git-*`, etc.) automatically use
-these keys.** You don't need to manage SSH keys manually.
+The `agent-vm` script automatically manages these keys. You don't need to handle
+SSH keys manually.
 
 **Security Notes:**
 
-- Private key has restrictive permissions (0600)
-- Keys are regenerated if you destroy and recreate the VM
+- Private keys have restrictive permissions (0600)
+- Each VM has its own unique SSH key
+- Keys are regenerated if you destroy and recreate a VM
 - Keys are not committed to git (listed in `.gitignore`)
 
 ## Maintenance
 
-### Update VM Configuration
-
-After modifying Terraform configuration files, redeploy using:
+### View VM Status
 
 ```bash
-./vm-up.sh
-```
+# List all VMs
+./agent-vm --list
 
-**Advanced:** You can also use Terraform directly if you need more control:
-
-```bash
-terraform plan  # Review changes
-terraform apply # Apply changes
+# View detailed VM info with virsh
+virsh list --all
 ```
 
 ### Destroy VM
 
 ```bash
-terraform destroy
-```
+# Destroy specific VM
+./agent-vm -b feature-name --destroy
 
-### View VM Status
-
-```bash
-virsh list --all
-virsh dominfo debian-trixie-vm
+# Clean up all stopped VMs
+./agent-vm --cleanup
 ```
 
 ## Troubleshooting
@@ -489,28 +318,19 @@ virsh dominfo debian-trixie-vm
 ### VM Not Getting IP Address
 
 ```bash
+# List VMs and their status
+./agent-vm --list
+
 # Check DHCP leases
 virsh net-dhcp-leases default
-
-# Check VM network interface
-virsh domiflist debian-trixie-vm
 ```
 
-### Console Not Auto-Logging In
+### Cannot Connect to VM
 
-1. Connect to console: `virsh console debian-trixie-vm`
-2. If you see login prompt, cloud-init may not have completed
-3. Wait 1-2 minutes for cloud-init to finish
-4. Check cloud-init status: `cloud-init status`
-
-### SSH Connection Refused
-
-1. Verify VM is running: `virsh list`
-2. Check VM has IP: `terraform output vm_ip`
-3. Verify SSH keys were generated: `ls vm-ssh-key vm-ssh-key.pub`
-4. Try using the helper script: `./vm-connect.sh`
-5. Check cloud-init logs: `virsh console debian-trixie-vm` then
-   `journalctl -u cloud-init`
+1. Verify VM is running: `./agent-vm --list`
+2. Check if VM is in the running state
+3. Try reconnecting: `./agent-vm -b branch-name`
+4. Check cloud-init logs: Connect via console and run `journalctl -u cloud-init`
 
 ### VM Cannot Reach Internet (Multi-Interface Hosts)
 
@@ -581,10 +401,10 @@ vm/
 ├── variables.tf           # Input variables
 ├── outputs.tf             # Output values
 ├── cloud-init.yaml.tftpl  # Cloud-init template
-├── vm-*.sh                # VM helper scripts
+├── agent-vm               # Unified VM management script
+├── vm-common.sh           # Helper functions
 ├── libvirt-nat-fix.sh     # Network fix script
-├── vm-ssh-key             # Auto-generated SSH private key (not in git)
-└── vm-ssh-key.pub         # Auto-generated SSH public key (not in git)
+└── .ssh/                  # Per-VM SSH keys (not in git)
 
 ../common/
 ├── homedir/               # Shared configs (deployed to VM)
