@@ -370,6 +370,7 @@ if workspace_exists "$VM_NAME"; then
   else
     echo "Warning: Workspace exists but VM domain missing. Recreating..."
     # Workspace exists but VM doesn't - clean up and recreate
+    terraform destroy -auto-approve
     terraform workspace select default
     terraform workspace delete "$VM_NAME"
 
