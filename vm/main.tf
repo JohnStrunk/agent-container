@@ -272,7 +272,7 @@ resource "libvirt_domain" "debian_vm" {
       var.worktree_path != "" ? [
         {
           source = {
-            path = var.worktree_path
+            dir = var.worktree_path
           }
           target = {
             dir = "worktree"
@@ -284,7 +284,7 @@ resource "libvirt_domain" "debian_vm" {
       var.main_repo_path != "" ? [
         {
           source = {
-            path = var.main_repo_path
+            dir = var.main_repo_path
           }
           target = {
             dir = "mainrepo"
