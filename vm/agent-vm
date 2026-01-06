@@ -280,7 +280,7 @@ fi
 # Handle stop/destroy actions
 if [[ "$ACTION" == "stop" || "$ACTION" == "destroy" ]]; then
   # Determine VM naming (needed for stop/destroy)
-  if [[ ! -d .git ]]; then
+  if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
     echo "Error: Must be in a git repository to use -b option" >&2
     exit 1
   fi
@@ -301,7 +301,7 @@ fi
 
 # Determine if we should use git worktrees
 if [[ -n "$BRANCH_NAME" ]]; then
-  if [[ ! -d .git ]]; then
+  if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
     echo "Error: Must be in a git repository to use -b option" >&2
     exit 1
   fi
