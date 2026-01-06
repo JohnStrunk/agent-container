@@ -114,3 +114,75 @@ get_rsync_ssh_cmd() {
 
   echo "ssh -i $ssh_key -o StrictHostKeyChecking=no"
 }
+
+# Check if Terraform workspace exists
+# Args:
+#   $1 - Workspace name
+# Returns: 0 if exists, 1 if not
+workspace_exists() {
+  local workspace_name="$1"
+  terraform workspace list 2>/dev/null | grep -q "^[* ] *${workspace_name}$"
+}
+
+# Check if libvirt domain (VM) exists
+# Args:
+#   $1 - Domain name
+# Returns: 0 if exists, 1 if not
+vm_domain_exists() {
+  local domain_name="$1"
+  virsh list --all 2>/dev/null | tail -n +3 | awk '{print $2}' | grep -q "^${domain_name}$"
+}
+
+# Check if VM is running
+# Args:
+#   $1 - Domain name
+# Returns: 0 if running, 1 if not
+vm_is_running() {
+  local domain_name="$1"
+  virsh list --state-running 2>/dev/null | tail -n +3 | awk '{print $2}' | grep -q "^${domain_name}$"
+}
+
+# Find first available IP in subnet
+# Args:
+#   $1 - Script directory
+#   $2 - Subnet third octet (e.g., 123 for 192.168.123.0/24)
+# Returns: Available IP address
+# Exits: 1 if no IPs available
+find_available_ip() {
+  local script_dir="$1"
+  local subnet_third_octet="$2"
+  local base_ip="192.168.${subnet_third_octet}"
+  local start=10
+  local end=254
+
+  cd "$script_dir" || exit 1
+
+  # Get current workspace to restore later
+  local current_workspace
+  current_workspace=$(terraform workspace show 2>/dev/null || echo "default")
+
+  # Get all IPs currently in use from all workspaces
+  local used_ips
+  used_ips=$(terraform workspace list 2>/dev/null | grep -v default | sed 's/^[* ] *//' | \
+    while read -r ws; do
+      terraform workspace select "$ws" >/dev/null 2>&1
+      terraform output -raw vm_ip 2>/dev/null || true
+    done | sort -V)
+
+  # Restore original workspace
+  terraform workspace select "$current_workspace" >/dev/null 2>&1
+
+  # Find first gap in IP range
+  for ip_last_octet in $(seq $start $end); do
+    local candidate_ip="${base_ip}.${ip_last_octet}"
+    if ! echo "$used_ips" | grep -q "^${candidate_ip}$"; then
+      echo "$candidate_ip"
+      return 0
+    fi
+  done
+
+  # No IPs available
+  echo "Error: No available IPs in subnet ${base_ip}.0/24" >&2
+  echo "Run: agent-vm --cleanup to remove stopped VMs" >&2
+  exit 1
+}
