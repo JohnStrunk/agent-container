@@ -196,7 +196,6 @@ EOF
 # Parse command line options
 BRANCH_NAME=""
 VM_COMMAND=()
-USE_GIT=0
 MEMORY_OVERRIDE=""
 VCPU_OVERRIDE=""
 DISK_OVERRIDE=""
@@ -307,7 +306,6 @@ if [[ -n "$BRANCH_NAME" ]]; then
     exit 1
   fi
 
-  USE_GIT=1
   REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
   WORKTREE_DIR="$WORKTREE_BASE_DIR/${REPO_NAME}-${BRANCH_NAME}"
   VM_NAME="${REPO_NAME}-${BRANCH_NAME}"
