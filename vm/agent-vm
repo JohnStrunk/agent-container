@@ -2,7 +2,7 @@
 
 set -e -o pipefail
 
-WORKTREE_BASE_DIR=~/src/worktrees
+WORKTREE_BASE_DIR="${HOME}/src/worktrees"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 function stop_vm {
