@@ -5,6 +5,40 @@ set -e -o pipefail
 WORKTREE_BASE_DIR=~/src/worktrees
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+function cleanup_stopped_vms {
+  echo "Cleaning up stopped VMs..."
+  local cleaned_count=0
+
+  # List all workspaces except default
+  terraform workspace list 2>/dev/null | grep -v default | sed 's/^[* ] *//' | \
+    while read -r ws; do
+      terraform workspace select "$ws" >/dev/null 2>&1
+
+      local vm_name="$ws"
+
+      # Check if VM exists and is stopped
+      if vm_domain_exists "$vm_name" && ! vm_is_running "$vm_name"; then
+        echo "Destroying stopped VM: $vm_name"
+        virsh destroy "$vm_name" 2>/dev/null || true
+        virsh undefine "$vm_name" 2>/dev/null || true
+
+        # Destroy Terraform resources
+        terraform destroy -auto-approve >/dev/null 2>&1
+
+        # Switch back and delete workspace
+        terraform workspace select default >/dev/null 2>&1
+        terraform workspace delete "$ws" 2>/dev/null
+
+        cleaned_count=$((cleaned_count + 1))
+      fi
+    done
+
+  # Return to default workspace
+  terraform workspace select default >/dev/null 2>&1
+
+  echo "Cleaned up $cleaned_count stopped VMs."
+}
+
 function list_vms {
   echo "Listing all VMs managed by agent-vm..."
   echo ""
@@ -149,5 +183,11 @@ cd "$SCRIPT_DIR" || exit 1
 # Handle list action
 if [[ "$ACTION" == "list" ]]; then
   list_vms
+  exit 0
+fi
+
+# Handle cleanup action
+if [[ "$ACTION" == "cleanup" ]]; then
+  cleanup_stopped_vms
   exit 0
 fi
