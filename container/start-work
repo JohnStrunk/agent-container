@@ -172,7 +172,7 @@ fi
 
 # Start the agent container, mounting the worktree
 if [[ ${#CONTAINER_COMMAND[@]} -gt 0 ]]; then
-    echo "Starting agent container on $WORKTREE_DIR and executing: ${CONTAINER_COMMAND[*]}"
+    echo "Starting agent container on $WORKTREE_DIR and executing command..."
 else
     echo "Starting agent container on $WORKTREE_DIR..."
 fi
