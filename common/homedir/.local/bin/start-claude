@@ -13,6 +13,10 @@ function initial_setup() {
     # Plugins
     claude plugin marketplace add obra/superpowers-marketplace
     claude plugin install superpowers@superpowers-marketplace
+    # The official marketplace is built-in, but we have to add it separately
+    # so that it can find the plugins before 1st startup
+    claude plugin marketplace add anthropics/claude-code
+    claude plugin install ralph-wiggum@claude-code-plugins
 }
 
 
