@@ -201,18 +201,13 @@ cleanup_container() {
 
 # shellcheck disable=SC2317
 cleanup_vm() {
-    log "Cleaning up VM..."
-    if [[ -d vm ]] && [[ -f vm/main.tf ]]; then
+    log "Cleaning up VMs..."
+    if [[ -d vm ]] && [[ -f vm/agent-vm ]]; then
         (
             cd vm || exit
-            if terraform state list 2>/dev/null | grep -q .; then
-                terraform destroy -auto-approve \
-                    -var="user_uid=$(id -u)" \
-                    -var="user_gid=$(id -g)" 2>&1 | \
-                    grep -v "^$" || true
-            else
-                log "No VM to clean up"
-            fi
+            # Clean up any test VMs that might still be running
+            ./agent-vm -b test-branch-1 --destroy 2>/dev/null || true
+            ./agent-vm -b test-branch-2 --destroy 2>/dev/null || true
         )
     fi
     log "VM cleanup complete"
@@ -332,110 +327,78 @@ test_container() {
 }
 
 test_vm() {
-    log_step "Starting VM Integration Test"
-    local start_time
-    start_time=$(date +%s)
+  echo "Testing VM approach with multi-instance support..."
 
-    # Change to vm directory
-    cd vm || {
-        log_error "vm directory not found"
-        return 1
-    }
+  cd vm/ || exit 1
 
-    # Source common VM functions
-    # shellcheck source=vm/vm-common.sh
-    # shellcheck disable=SC1091
-    source "./vm-common.sh"
+  # Test 1: Create first VM
+  echo "Test: Creating first VM"
+  ./agent-vm -b test-branch-1 -- echo "VM 1 ready"
+  if [ $? -ne 0 ]; then
+    echo "FAIL: Could not create first VM"
+    return 1
+  fi
 
-    # Step 1: Check for existing VM and destroy it
-    log "[VM] Checking for existing VM..."
-    if terraform state list 2>/dev/null | grep -q libvirt_domain.agent_vm; then
-        log "[VM] Found existing VM from previous test, destroying..."
-        terraform destroy -auto-approve \
-            -var="user_uid=$(id -u)" \
-            -var="user_gid=$(id -g)" 2>&1 | \
-            grep -v "^$" || true
-    fi
+  # Test 2: Create second VM (parallel)
+  echo "Test: Creating second VM in parallel"
+  ./agent-vm -b test-branch-2 -- echo "VM 2 ready"
+  if [ $? -ne 0 ]; then
+    echo "FAIL: Could not create second VM"
+    ./agent-vm -b test-branch-1 --destroy
+    return 1
+  fi
 
-    # Step 2: Provision VM
-    log "[VM] Provisioning VM with Terraform..."
+  # Test 3: Verify both running
+  echo "Test: Verifying both VMs are running"
+  if ! virsh list --state-running 2>/dev/null | grep -q "test-branch-1"; then
+    echo "FAIL: First VM not running"
+    ./agent-vm -b test-branch-1 --destroy
+    ./agent-vm -b test-branch-2 --destroy
+    return 1
+  fi
 
-    # Export GOOGLE_APPLICATION_CREDENTIALS for vm-up.sh
-    export GOOGLE_APPLICATION_CREDENTIALS="$GCP_CREDS_PATH"
+  if ! virsh list --state-running 2>/dev/null | grep -q "test-branch-2"; then
+    echo "FAIL: Second VM not running"
+    ./agent-vm -b test-branch-1 --destroy
+    ./agent-vm -b test-branch-2 --destroy
+    return 1
+  fi
 
-    if ! run_with_timeout 300 ./vm-up.sh; then
-        log_error "VM provisioning failed"
-        cd .. || return 1
-        return 1
-    fi
+  # Test 4: Verify filesystem mounts
+  echo "Test: Verifying filesystem mounts"
+  if ! ./agent-vm -b test-branch-1 -- mountpoint -q /worktree; then
+    echo "FAIL: Worktree not mounted in first VM"
+    ./agent-vm -b test-branch-1 --destroy
+    ./agent-vm -b test-branch-2 --destroy
+    return 1
+  fi
 
-    local provision_time
-    provision_time=$(($(date +%s) - start_time))
-    log "[VM] VM provisioned (${provision_time}s)"
+  # Test 5: Test reconnection
+  echo "Test: Reconnecting to first VM"
+  if ! ./agent-vm -b test-branch-1 -- echo "Reconnected"; then
+    echo "FAIL: Could not reconnect to first VM"
+    ./agent-vm -b test-branch-1 --destroy
+    ./agent-vm -b test-branch-2 --destroy
+    return 1
+  fi
 
-    # Step 3: Get VM IP
-    local vm_ip
-    vm_ip=$(terraform output -raw vm_ip 2>/dev/null || echo "")
-    if [[ -z "$vm_ip" ]]; then
-        log_error "Failed to get VM IP from terraform output"
-        cd .. || return 1
-        return 1
-    fi
+  # Test 6: Verify list command
+  echo "Test: Listing VMs"
+  if ! ./agent-vm --list | grep -q "test-branch-1"; then
+    echo "FAIL: List command did not show first VM"
+    ./agent-vm -b test-branch-1 --destroy
+    ./agent-vm -b test-branch-2 --destroy
+    return 1
+  fi
 
-    log "[VM] VM IP: $vm_ip"
+  # Cleanup
+  echo "Cleaning up test VMs..."
+  ./agent-vm -b test-branch-1 --destroy
+  ./agent-vm -b test-branch-2 --destroy
 
-    # Get VM default user
-    local vm_user
-    vm_user=$(terraform output -raw default_user 2>/dev/null || echo "")
-    if [[ -z "$vm_user" ]]; then
-        log_error "Failed to get VM username from terraform output"
-        cd .. || return 1
-        return 1
-    fi
-
-    log "[VM] VM user: $vm_user"
-
-    # Step 4: Verify SSH connectivity
-    # Note: Terraform's null_resource.wait_for_cloud_init already confirmed cloud-init completed
-    # Give the VM a few seconds for SSH service to be fully ready for user connections
-    log "[VM] Waiting for SSH service to be ready..."
-    sleep 5
-
-    log "[VM] Verifying SSH connectivity as $vm_user..."
-
-    # Use vm_ssh function with retry logic
-    local retry_count=0
-    local max_retries=30
-    until vm_ssh "." "$vm_user" "$vm_ip" 'echo SSH connection successful' >/dev/null 2>&1; do
-        retry_count=$((retry_count + 1))
-        if [[ $retry_count -ge $max_retries ]]; then
-            log_error "SSH connection as $vm_user failed after $max_retries attempts"
-            cd .. || return 1
-            return 1
-        fi
-        sleep 2
-    done
-
-    log "[VM] SSH connectivity verified"
-
-    # Step 5: Run Claude test via SSH
-    log "[VM] Testing Claude Code in VM..."
-
-    # Execute test via SSH (SSH connectivity already verified)
-    # Use login shell (-l) to source /etc/profile.d scripts for GCP env vars
-    if ! run_with_timeout 90 ssh -i ./vm-ssh-key -o StrictHostKeyChecking=no \
-        "$vm_user@${vm_ip}" "bash -l -s" < <(generate_test_command); then
-        log_error "Claude test failed in VM"
-        cd .. || return 1
-        return 1
-    fi
-
-    cd .. || return 1
-
-    local total_time
-    total_time=$(($(date +%s) - start_time))
-    log_step "VM Test: PASS (${total_time}s)"
-    return 0
+  cd ..
+  echo "VM tests PASSED"
+  return 0
 }
 
 main() {
