@@ -44,3 +44,63 @@ Multi-VM:
   * VMs persist after exit (not destroyed like containers)
 EOF
 }
+
+# Parse command line options
+BRANCH_NAME=""
+VM_COMMAND=()
+USE_GIT=0
+MEMORY_OVERRIDE=""
+VCPU_OVERRIDE=""
+DISK_OVERRIDE=""
+ACTION=""  # list, stop, destroy, cleanup, or "" for connect
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -b|--branch)
+            BRANCH_NAME="$2"
+            shift 2
+            ;;
+        --memory)
+            MEMORY_OVERRIDE="$2"
+            shift 2
+            ;;
+        --vcpu)
+            VCPU_OVERRIDE="$2"
+            shift 2
+            ;;
+        --disk)
+            DISK_OVERRIDE="$2"
+            shift 2
+            ;;
+        --list)
+            ACTION="list"
+            shift
+            ;;
+        --stop)
+            ACTION="stop"
+            shift
+            ;;
+        --destroy)
+            ACTION="destroy"
+            shift
+            ;;
+        --cleanup)
+            ACTION="cleanup"
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            VM_COMMAND=("$@")
+            break
+            ;;
+        *)
+            echo "Error: Unknown option: $1" >&2
+            usage
+            exit 1
+            ;;
+    esac
+done
