@@ -245,6 +245,8 @@ resource "libvirt_domain" "debian_vm" {
             network = libvirt_network.default.name
           }
         }
+        addresses          = var.vm_ip != "" ? [var.vm_ip] : null
+        wait_for_lease     = true
       }
     ]
 
