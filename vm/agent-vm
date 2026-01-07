@@ -576,7 +576,24 @@ if workspace_exists "$VM_NAME"; then
   else
     echo "Warning: Workspace exists but VM domain missing. Recreating..."
     # Workspace exists but VM doesn't - clean up and recreate
-    terraform destroy -auto-approve
+
+    echo "Cleaning up orphaned workspace resources..."
+    if ! terraform destroy -auto-approve; then
+      echo ""
+      echo "ERROR: Failed to destroy orphaned workspace resources"
+      echo ""
+      echo "Manual cleanup required:"
+      echo "  terraform workspace select $VM_NAME"
+      echo "  terraform state list"
+      echo "  terraform destroy -auto-approve"
+      echo ""
+      echo "Or force deletion (may leave orphaned resources):"
+      echo "  terraform workspace select default"
+      echo "  terraform workspace delete -force $VM_NAME"
+      echo ""
+      exit 1
+    fi
+
     terraform workspace select default
     terraform workspace delete "$VM_NAME"
 
