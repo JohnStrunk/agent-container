@@ -43,11 +43,36 @@ function destroy_vm {
   # Switch to workspace and destroy Terraform resources
   if workspace_exists "$workspace_name"; then
     terraform workspace select "$workspace_name" >/dev/null 2>&1
-    terraform destroy -auto-approve
 
-    # Delete workspace
+    echo "Destroying Terraform resources..."
+    if ! terraform destroy -auto-approve; then
+      echo ""
+      echo "ERROR: terraform destroy failed"
+      echo ""
+      echo "Workspace '$workspace_name' preserved for manual inspection."
+      echo ""
+      echo "To retry:"
+      echo "  terraform workspace select $workspace_name"
+      echo "  terraform destroy -auto-approve"
+      echo "  terraform workspace select default"
+      echo "  terraform workspace delete $workspace_name"
+      echo ""
+      echo "Or force cleanup (may leave orphaned resources):"
+      echo "  terraform workspace select default"
+      echo "  terraform workspace delete -force $workspace_name"
+      echo ""
+      return 1
+    fi
+
+    # Only delete workspace if destroy succeeded
     terraform workspace select default >/dev/null 2>&1
     terraform workspace delete "$workspace_name"
+
+    # Clean up mount directory
+    local mount_point="$HOME/.agent-vm-mounts/${vm_name}"
+    if [ -d "$mount_point" ]; then
+      rmdir "$mount_point" 2>/dev/null || true
+    fi
   fi
 
   echo "VM destroyed: $vm_name"
