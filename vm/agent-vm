@@ -249,29 +249,41 @@ function cleanup_stopped_vms {
   echo "Cleaning up stopped VMs..."
   local cleaned_count=0
 
-  # List all workspaces except default
-  terraform workspace list 2>/dev/null | grep -v default | sed 's/^[* ] *//' | \
-    while read -r ws; do
-      terraform workspace select "$ws" >/dev/null 2>&1
+  # Use process substitution instead of pipe to avoid subshell
+  # This preserves the cleaned_count variable updates
+  while read -r ws; do
+    # Skip empty lines
+    [[ -z "$ws" ]] && continue
 
-      local vm_name="$ws"
+    terraform workspace select "$ws" >/dev/null 2>&1
 
-      # Check if VM exists and is stopped
-      if vm_domain_exists "$vm_name" && ! vm_is_running "$vm_name"; then
-        echo "Destroying stopped VM: $vm_name"
-        virsh destroy "$vm_name" 2>/dev/null || true
-        virsh undefine "$vm_name" 2>/dev/null || true
+    local vm_name="$ws"
 
-        # Destroy Terraform resources
-        terraform destroy -auto-approve >/dev/null 2>&1
+    # Check if VM exists and is stopped
+    if vm_domain_exists "$vm_name" && ! vm_is_running "$vm_name"; then
+      echo "Destroying stopped VM: $vm_name"
+      virsh destroy "$vm_name" 2>/dev/null || true
+      virsh undefine "$vm_name" 2>/dev/null || true
 
-        # Switch back and delete workspace
-        terraform workspace select default >/dev/null 2>&1
-        terraform workspace delete "$ws" 2>/dev/null
-
-        cleaned_count=$((cleaned_count + 1))
+      # Destroy Terraform resources
+      if ! terraform destroy -auto-approve >/dev/null 2>&1; then
+        echo "  WARNING: terraform destroy failed for $vm_name, skipping workspace deletion"
+        continue
       fi
-    done
+
+      # Switch back and delete workspace (only if destroy succeeded)
+      terraform workspace select default >/dev/null 2>&1
+      terraform workspace delete "$ws" 2>/dev/null
+
+      # Clean up mount directory
+      local mount_point="$HOME/.agent-vm-mounts/${vm_name}"
+      if [ -d "$mount_point" ]; then
+        rmdir "$mount_point" 2>/dev/null || true
+      fi
+
+      cleaned_count=$((cleaned_count + 1))
+    fi
+  done < <(terraform workspace list 2>/dev/null | grep -v default | sed 's/^[* ] *//')
 
   # Return to default workspace
   terraform workspace select default >/dev/null 2>&1
