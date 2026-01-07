@@ -103,17 +103,9 @@ function fetch_branch_from_vm {
 
   echo "Fetching '$branch_name' from VM..."
 
-  # Unmount SSHFS first (ensure clean state)
-  local mount_point="$HOME/.agent-vm-mounts/${REPO_NAME}-${branch_name}"
-  if mountpoint -q "$mount_point" 2>/dev/null; then
-    echo "Unmounting SSHFS..."
-    fusermount -u "$mount_point" 2>/dev/null || umount "$mount_point" 2>/dev/null
-    sleep 1
-  fi
-
   cd "$(git rev-parse --show-toplevel)" || exit 1
 
-  # Check for uncommitted changes in VM
+  # Check for uncommitted changes in VM FIRST (before unmounting)
   if ssh -i "$ssh_key" -o StrictHostKeyChecking=no "user@$vm_ip" \
      "cd /worktree && ! git diff --quiet || ! git diff --cached --quiet" 2>/dev/null; then
     echo ""
@@ -124,6 +116,14 @@ function fetch_branch_from_vm {
     echo "  git commit -am 'Your message'"
     echo ""
     return 1
+  fi
+
+  # ONLY AFTER dirty check passes, unmount SSHFS
+  local mount_point="$HOME/.agent-vm-mounts/${REPO_NAME}-${branch_name}"
+  if mountpoint -q "$mount_point" 2>/dev/null; then
+    echo "Unmounting SSHFS..."
+    fusermount -u "$mount_point" 2>/dev/null || umount "$mount_point" 2>/dev/null
+    sleep 1
   fi
 
   # Set up SSH key for git
