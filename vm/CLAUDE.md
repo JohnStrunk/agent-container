@@ -216,3 +216,16 @@ integration tests to run from the VM environment.
 - Terraform state managed locally (consider remote backend for teams)
 - VM lifecycle managed by Terraform (create/destroy)
 - Cloud-init runs once at VM creation
+
+## Recent Bug Fixes (2026-01-07)
+
+Six critical bugs were fixed to improve safety and robustness:
+
+1. **Data Loss Prevention**: `--fetch` now checks for uncommitted changes BEFORE unmounting SSHFS, preventing editor buffer loss
+2. **Race Condition Fix**: IP allocation uses file locking to prevent concurrent processes from allocating the same IP
+3. **Resource Leak Prevention**: Workspace deletion only occurs after successful `terraform destroy`
+4. **Orphan Recovery**: Workspace orphan recovery verifies destroy success before recreation
+5. **Cleanup Accuracy**: `--cleanup` now correctly counts cleaned VMs (fixed subshell issue)
+6. **Mount Cleanup**: Mount directories are cleaned up when VMs are destroyed
+
+See `docs/plans/2026-01-07-agent-vm-critical-bug-fixes.md` for full details.
