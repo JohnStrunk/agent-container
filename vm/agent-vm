@@ -597,9 +597,9 @@ if [[ "${CREATE_NEW_VM:-0}" == "1" ]]; then
     )
 
     # Add resource overrides if provided
-    $([[ -n "$MEMORY_OVERRIDE" ]] && echo "TERRAFORM_VARS+=(-var=\"vm_memory=$MEMORY_OVERRIDE\")")
-    $([[ -n "$VCPU_OVERRIDE" ]] && echo "TERRAFORM_VARS+=(-var=\"vm_vcpu=$VCPU_OVERRIDE\")")
-    $([[ -n "$DISK_OVERRIDE" ]] && echo "DISK_BYTES=\$(numfmt --from=iec \"$DISK_OVERRIDE\") && TERRAFORM_VARS+=(-var=\"vm_disk_size=\$DISK_BYTES\")")
+    $([[ -n "$MEMORY_OVERRIDE" ]] && echo "TERRAFORM_VARS+=(-var=\"vm_memory=$MEMORY_OVERRIDE\")" || true)
+    $([[ -n "$VCPU_OVERRIDE" ]] && echo "TERRAFORM_VARS+=(-var=\"vm_vcpu=$VCPU_OVERRIDE\")" || true)
+    $([[ -n "$DISK_OVERRIDE" ]] && echo "DISK_BYTES=\$(numfmt --from=iec \"$DISK_OVERRIDE\") && TERRAFORM_VARS+=(-var=\"vm_disk_size=\$DISK_BYTES\")" || true)
 
     # Add GCP credentials if available
     GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
@@ -613,8 +613,8 @@ if [[ "${CREATE_NEW_VM:-0}" == "1" ]]; then
       echo "Injecting GCP credentials from: \$GCP_CREDS_PATH"
       TERRAFORM_VARS+=(-var="gcp_service_account_key_path=\$GCP_CREDS_PATH")
 
-      $([[ -n "$ANTHROPIC_VERTEX_PROJECT_ID" ]] && echo "TERRAFORM_VARS+=(-var=\"vertex_project_id=$ANTHROPIC_VERTEX_PROJECT_ID\")")
-      $([[ -n "$CLOUD_ML_REGION" ]] && echo "TERRAFORM_VARS+=(-var=\"vertex_region=$CLOUD_ML_REGION\")")
+      $([[ -n "$ANTHROPIC_VERTEX_PROJECT_ID" ]] && echo "TERRAFORM_VARS+=(-var=\"vertex_project_id=$ANTHROPIC_VERTEX_PROJECT_ID\")" || true)
+      $([[ -n "$CLOUD_ML_REGION" ]] && echo "TERRAFORM_VARS+=(-var=\"vertex_region=$CLOUD_ML_REGION\")" || true)
     fi
 
     # Initialize terraform if needed
