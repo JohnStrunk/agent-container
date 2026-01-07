@@ -208,6 +208,9 @@ cleanup_vm() {
             # Clean up any test VMs that might still be running
             ./agent-vm -b test-branch-1 --destroy 2>/dev/null || true
             ./agent-vm -b test-branch-2 --destroy 2>/dev/null || true
+            ./agent-vm -b test-concurrent-1 --destroy 2>/dev/null || true
+            ./agent-vm -b test-concurrent-2 --destroy 2>/dev/null || true
+            ./agent-vm -b test-cleanup --destroy 2>/dev/null || true
         )
     fi
     log "VM cleanup complete"
@@ -386,6 +389,71 @@ test_vm() {
   echo "Test: Listing VMs"
   if ! ./agent-vm --list | grep -q "test-branch-1"; then
     echo "FAIL: List command did not show first VM"
+    ./agent-vm -b test-branch-1 --destroy
+    ./agent-vm -b test-branch-2 --destroy
+    return 1
+  fi
+
+  # Test 7: Verify dirty check prevents fetch (Issue #1)
+  echo "Test: Dirty check prevents fetch with uncommitted changes"
+  ./agent-vm -b test-branch-1 -- bash -c "cd /worktree && echo 'dirty' >> test-dirty.txt"
+
+  # Try to fetch (should fail with uncommitted changes)
+  if ./agent-vm -b test-branch-1 --fetch 2>&1 | grep -q "uncommitted changes"; then
+    echo "PASS: Fetch correctly blocked on dirty working tree"
+  else
+    echo "FAIL: Fetch should have been blocked on dirty working tree"
+    ./agent-vm -b test-branch-1 --destroy
+    ./agent-vm -b test-branch-2 --destroy
+    return 1
+  fi
+
+  # Clean up the dirty file
+  ./agent-vm -b test-branch-1 -- bash -c "cd /worktree && rm -f test-dirty.txt"
+
+  # Test 8: Verify concurrent VM creation with different IPs (Issue #2)
+  echo "Test: Concurrent VM creation with different IPs"
+  ./agent-vm -b test-concurrent-1 -- echo "VM 1" &
+  PID1=$!
+  ./agent-vm -b test-concurrent-2 -- echo "VM 2" &
+  PID2=$!
+
+  wait $PID1
+  wait $PID2
+
+  # Get IPs and verify they're different
+  IP1=$(./agent-vm --list | grep test-concurrent-1 | awk '{print $3}')
+  IP2=$(./agent-vm --list | grep test-concurrent-2 | awk '{print $3}')
+
+  if [ "$IP1" != "$IP2" ] && [ -n "$IP1" ] && [ -n "$IP2" ]; then
+    echo "PASS: Concurrent VMs have different IPs ($IP1 vs $IP2)"
+  else
+    echo "FAIL: Concurrent VMs have same IP or missing IP"
+    ./agent-vm -b test-concurrent-1 --destroy
+    ./agent-vm -b test-concurrent-2 --destroy
+    ./agent-vm -b test-branch-1 --destroy
+    ./agent-vm -b test-branch-2 --destroy
+    return 1
+  fi
+
+  # Clean up concurrent test VMs
+  ./agent-vm -b test-concurrent-1 --destroy
+  ./agent-vm -b test-concurrent-2 --destroy
+
+  # Test 9: Verify cleanup correctly counts stopped VMs (Issue #5)
+  echo "Test: Cleanup correctly counts stopped VMs"
+
+  # Create and stop a VM
+  ./agent-vm -b test-cleanup -- echo "test"
+  virsh shutdown workspace-test-cleanup
+  sleep 5
+
+  # Run cleanup and verify count
+  if ./agent-vm --cleanup 2>&1 | grep -q "Cleaned up 1 stopped"; then
+    echo "PASS: Cleanup correctly reported 1 VM cleaned"
+  else
+    echo "FAIL: Cleanup did not report correct count"
+    ./agent-vm -b test-cleanup --destroy 2>/dev/null || true
     ./agent-vm -b test-branch-1 --destroy
     ./agent-vm -b test-branch-2 --destroy
     return 1
