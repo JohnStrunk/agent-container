@@ -334,6 +334,20 @@ test_vm() {
 
   cd vm/ || exit 1
 
+  # Clean up any leftover resources from previous test runs
+  echo "Cleaning up previous test resources..."
+
+  # Clean up terraform workspaces
+  terraform workspace select default 2>/dev/null || true
+  for ws in $(terraform workspace list 2>/dev/null | grep -E "workspace-test-branch" | sed 's/^[* ] *//'); do
+    terraform workspace delete -force "$ws" 2>/dev/null || true
+  done
+
+  # Clean up libvirt volumes
+  for vol in $(virsh --connect qemu:///system vol-list default 2>/dev/null | grep -E "workspace-test-branch|debian-13-base" | awk '{print $1}'); do
+    virsh --connect qemu:///system vol-delete "$vol" --pool default 2>/dev/null || true
+  done
+
   # Test 1: Create first VM
   echo "Test: Creating first VM"
   ./agent-vm -b test-branch-1 -- echo "VM 1 ready"
@@ -367,10 +381,11 @@ test_vm() {
     return 1
   fi
 
-  # Test 4: Verify filesystem mounts
-  echo "Test: Verifying filesystem mounts"
-  if ! ./agent-vm -b test-branch-1 -- mountpoint -q /worktree; then
-    echo "FAIL: Worktree not mounted in first VM"
+  # Test 4: Verify /worktree is accessible
+  # Note: virtio-9p mounts don't work in nested virtualization, so we use git-based sync
+  echo "Test: Verifying /worktree is accessible"
+  if ! ./agent-vm -b test-branch-1 -- test -d /worktree/.git; then
+    echo "FAIL: /worktree git repo not accessible in first VM"
     ./agent-vm -b test-branch-1 --destroy
     ./agent-vm -b test-branch-2 --destroy
     return 1

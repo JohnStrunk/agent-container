@@ -44,6 +44,11 @@ function destroy_vm {
   if workspace_exists "$workspace_name"; then
     terraform workspace select "$workspace_name" >/dev/null 2>&1
 
+    # Remove shared resources from state so they won't be destroyed
+    # (network and base volume are shared across all VMs)
+    terraform state rm libvirt_network.default 2>/dev/null || true
+    terraform state rm libvirt_volume.debian_base 2>/dev/null || true
+
     echo "Destroying Terraform resources..."
     if ! terraform destroy -auto-approve; then
       echo ""
@@ -264,6 +269,10 @@ function cleanup_stopped_vms {
       echo "Destroying stopped VM: $vm_name"
       virsh destroy "$vm_name" 2>/dev/null || true
       virsh undefine "$vm_name" 2>/dev/null || true
+
+      # Remove shared resources from state so they won't be destroyed
+      terraform state rm libvirt_network.default 2>/dev/null || true
+      terraform state rm libvirt_volume.debian_base 2>/dev/null || true
 
       # Destroy Terraform resources
       if ! terraform destroy -auto-approve >/dev/null 2>&1; then
@@ -589,6 +598,10 @@ if workspace_exists "$VM_NAME"; then
     echo "Warning: Workspace exists but VM domain missing. Recreating..."
     # Workspace exists but VM doesn't - clean up and recreate
 
+    # Remove shared resources from state so they won't be destroyed
+    terraform state rm libvirt_network.default 2>/dev/null || true
+    terraform state rm libvirt_volume.debian_base 2>/dev/null || true
+
     echo "Cleaning up orphaned workspace resources..."
     if ! terraform destroy -auto-approve; then
       echo ""
@@ -629,6 +642,9 @@ if [[ "${CREATE_NEW_VM:-0}" == "1" ]]; then
 
   flock -x -w 30 /tmp/agent-vm-ip-allocation.lock bash <<FLOCK_SCRIPT
     set -e -o pipefail
+
+    # Change to terraform directory
+    cd "$SCRIPT_DIR" || exit 1
 
     # Source common functions
     source "$SCRIPT_DIR/vm-common.sh"
@@ -688,6 +704,35 @@ if [[ "${CREATE_NEW_VM:-0}" == "1" ]]; then
       terraform init
     fi
 
+    # Import shared resources if they exist in libvirt but not in state
+    # This allows multiple workspaces to share the network and base image
+    echo "Checking if shared resources need to be imported..."
+    if ! terraform state list 2>/dev/null | grep -q "libvirt_network.default"; then
+      echo "Network not in state, checking if it exists in libvirt..."
+      NET_UUID=\$(virsh --connect qemu:///system net-uuid default 2>/dev/null || true)
+      if [ -n "\$NET_UUID" ]; then
+        echo "Importing existing network 'default' (UUID: \$NET_UUID) into workspace..."
+        terraform import libvirt_network.default "\$NET_UUID" || echo "Import failed, will try to create"
+      else
+        echo "Network doesn't exist yet, will create"
+      fi
+    else
+      echo "Network already in state"
+    fi
+
+    if ! terraform state list 2>/dev/null | grep -q "libvirt_volume.debian_base"; then
+      echo "Base volume not in state, checking if it exists in libvirt..."
+      if virsh --connect qemu:///system vol-info debian-13-base.qcow2 --pool default &>/dev/null; then
+        echo "Importing existing base volume 'debian-13-base.qcow2' into workspace..."
+        VOL_KEY=\$(virsh --connect qemu:///system vol-key debian-13-base.qcow2 --pool default 2>/dev/null || true)
+        terraform import libvirt_volume.debian_base "\$VOL_KEY" || echo "Import failed, will try to create"
+      else
+        echo "Base volume doesn't exist yet, will create"
+      fi
+    else
+      echo "Base volume already in state"
+    fi
+
     # Apply terraform (lock prevents other processes from allocating same IP)
     echo "Provisioning VM with Terraform..."
     terraform apply -auto-approve "\${TERRAFORM_VARS[@]}"
@@ -727,8 +772,8 @@ done
 # Push branch to VM
 push_branch_to_vm "$VM_IP" "$BRANCH_NAME"
 
-# Mount VM worktree via SSHFS
-mount_vm_worktree "$VM_IP" "$BRANCH_NAME"
+# Mount VM worktree via SSHFS (non-fatal if it fails)
+mount_vm_worktree "$VM_IP" "$BRANCH_NAME" || true
 
 # Connect to VM
 echo "Connecting to VM: $VM_NAME (IP: $VM_IP)"

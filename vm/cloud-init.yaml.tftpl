@@ -75,6 +75,8 @@ runcmd:
         echo "mainrepo /mainrepo 9p trans=virtio,version=9p2000.L,rw,_netdev 0 0" >> /etc/fstab
       fi
     fi
+  # Set ownership on /worktree and /mainrepo for user access
+  - chown -R ${user_uid}:${user_gid} /worktree /mainrepo
   # Initialize libvirt default storage pool for nested virtualization
   - mkdir -p /var/lib/libvirt/images
   - chmod 755 /var/lib/libvirt/images
