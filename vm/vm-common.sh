@@ -142,12 +142,13 @@ vm_is_running() {
   virsh list --state-running 2>/dev/null | tail -n +3 | awk '{print $2}' | grep -q "^${domain_name}$"
 }
 
-# Find first available IP in subnet
+# Find first available IP in subnet and set VM_IP variable
 # Args:
 #   $1 - Script directory
 #   $2 - Subnet third octet (e.g., 123 for 192.168.123.0/24)
-# Returns: Available IP address
+# Sets: VM_IP global variable
 # Exits: 1 if no IPs available
+# NOTE: Caller must hold IP allocation lock before calling this function
 find_available_ip() {
   local script_dir="$1"
   local subnet_third_octet="$2"
@@ -162,12 +163,22 @@ find_available_ip() {
   current_workspace=$(terraform workspace show 2>/dev/null || echo "default")
 
   # Get all IPs currently in use from all workspaces
-  local used_ips
-  used_ips=$(terraform workspace list 2>/dev/null | grep -v default | sed 's/^[* ] *//' | \
-    while read -r ws; do
-      terraform workspace select "$ws" >/dev/null 2>&1
-      terraform output -raw vm_ip 2>/dev/null || true
-    done | sort -V)
+  # Use process substitution instead of pipe to avoid closing FD 200 in subshell
+  local used_ips=""
+  local ws_list
+  ws_list=$(terraform workspace list 2>/dev/null | grep -v default | sed 's/^[* ] *//')
+
+  for ws in $ws_list; do
+    terraform workspace select "$ws" >/dev/null 2>&1
+    local ip
+    ip=$(terraform output -raw vm_ip 2>/dev/null || true)
+    if [[ -n "$ip" ]]; then
+      used_ips="${used_ips}${ip}"$'\n'
+    fi
+  done
+
+  # Sort IPs
+  used_ips=$(echo "$used_ips" | sort -V)
 
   # Restore original workspace
   terraform workspace select "$current_workspace" >/dev/null 2>&1
@@ -176,7 +187,7 @@ find_available_ip() {
   for ip_last_octet in $(seq $start $end); do
     local candidate_ip="${base_ip}.${ip_last_octet}"
     if ! echo "$used_ips" | grep -q "^${candidate_ip}$"; then
-      echo "$candidate_ip"
+      VM_IP="$candidate_ip"  # Set global variable
       return 0
     fi
   done

@@ -569,63 +569,68 @@ if [[ "${CREATE_NEW_VM:-0}" == "1" ]]; then
   # Create workspace
   terraform workspace new "$VM_NAME"
 
-  # Find available IP
-  VM_IP=$(find_available_ip "$SCRIPT_DIR" "$NETWORK_SUBNET")
-  echo "Allocated IP: $VM_IP"
+  # Allocate IP and provision VM under exclusive lock to prevent race conditions
+  # Lock is held from IP selection through terraform apply completion
+  VM_IP_FILE="/tmp/agent-vm-ip-$$"
 
-  # Build terraform variables
-  TERRAFORM_VARS=(
-    -var="vm_name=$VM_NAME"
-    -var="vm_hostname=$VM_NAME"
-    -var="vm_ip=$VM_IP"
-    -var="network_subnet_third_octet=$NETWORK_SUBNET"
-    -var="user_uid=$(id -u)"
-    -var="user_gid=$(id -g)"
-  )
+  flock -x -w 30 /tmp/agent-vm-ip-allocation.lock bash <<FLOCK_SCRIPT
+    set -e -o pipefail
 
-  # Add resource overrides if provided
-  if [[ -n "$MEMORY_OVERRIDE" ]]; then
-    TERRAFORM_VARS+=(-var="vm_memory=$MEMORY_OVERRIDE")
-  fi
-  if [[ -n "$VCPU_OVERRIDE" ]]; then
-    TERRAFORM_VARS+=(-var="vm_vcpu=$VCPU_OVERRIDE")
-  fi
-  if [[ -n "$DISK_OVERRIDE" ]]; then
-    # Convert disk size to bytes (e.g., 60G -> 64424509440)
-    DISK_BYTES=$(numfmt --from=iec "${DISK_OVERRIDE}")
-    TERRAFORM_VARS+=(-var="vm_disk_size=$DISK_BYTES")
-  fi
+    # Source common functions
+    source "$SCRIPT_DIR/vm-common.sh"
 
-  # Add GCP credentials if available
-  GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
-  if [[ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then
-    GCP_CREDS_PATH="$GOOGLE_APPLICATION_CREDENTIALS"
-  else
-    GCP_CREDS_PATH="$GCP_CREDS_DEFAULT"
-  fi
+    # Find available IP (lock is held by flock)
+    find_available_ip "$SCRIPT_DIR" "$NETWORK_SUBNET"
+    echo "Allocated IP: \$VM_IP"
 
-  if [[ -f "$GCP_CREDS_PATH" ]]; then
-    echo "Injecting GCP credentials from: $GCP_CREDS_PATH"
-    TERRAFORM_VARS+=(-var="gcp_service_account_key_path=$GCP_CREDS_PATH")
+    # Save IP for parent process
+    echo "\$VM_IP" > "$VM_IP_FILE"
 
-    if [[ -n "$ANTHROPIC_VERTEX_PROJECT_ID" ]]; then
-      TERRAFORM_VARS+=(-var="vertex_project_id=$ANTHROPIC_VERTEX_PROJECT_ID")
+    # Build terraform variables
+    TERRAFORM_VARS=(
+      -var="vm_name=$VM_NAME"
+      -var="vm_hostname=$VM_NAME"
+      -var="vm_ip=\$VM_IP"
+      -var="network_subnet_third_octet=$NETWORK_SUBNET"
+      -var="user_uid=$(id -u)"
+      -var="user_gid=$(id -g)"
+    )
+
+    # Add resource overrides if provided
+    $([[ -n "$MEMORY_OVERRIDE" ]] && echo "TERRAFORM_VARS+=(-var=\"vm_memory=$MEMORY_OVERRIDE\")")
+    $([[ -n "$VCPU_OVERRIDE" ]] && echo "TERRAFORM_VARS+=(-var=\"vm_vcpu=$VCPU_OVERRIDE\")")
+    $([[ -n "$DISK_OVERRIDE" ]] && echo "DISK_BYTES=\$(numfmt --from=iec \"$DISK_OVERRIDE\") && TERRAFORM_VARS+=(-var=\"vm_disk_size=\$DISK_BYTES\")")
+
+    # Add GCP credentials if available
+    GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
+    if [[ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then
+      GCP_CREDS_PATH="$GOOGLE_APPLICATION_CREDENTIALS"
+    else
+      GCP_CREDS_PATH="\$GCP_CREDS_DEFAULT"
     fi
 
-    if [[ -n "$CLOUD_ML_REGION" ]]; then
-      TERRAFORM_VARS+=(-var="vertex_region=$CLOUD_ML_REGION")
+    if [[ -f "\$GCP_CREDS_PATH" ]]; then
+      echo "Injecting GCP credentials from: \$GCP_CREDS_PATH"
+      TERRAFORM_VARS+=(-var="gcp_service_account_key_path=\$GCP_CREDS_PATH")
+
+      $([[ -n "$ANTHROPIC_VERTEX_PROJECT_ID" ]] && echo "TERRAFORM_VARS+=(-var=\"vertex_project_id=$ANTHROPIC_VERTEX_PROJECT_ID\")")
+      $([[ -n "$CLOUD_ML_REGION" ]] && echo "TERRAFORM_VARS+=(-var=\"vertex_region=$CLOUD_ML_REGION\")")
     fi
-  fi
 
-  # Initialize terraform if needed
-  if [[ ! -d ".terraform" ]] || [[ ! -f ".terraform.lock.hcl" ]]; then
-    echo "Initializing Terraform..."
-    terraform init
-  fi
+    # Initialize terraform if needed
+    if [[ ! -d ".terraform" ]] || [[ ! -f ".terraform.lock.hcl" ]]; then
+      echo "Initializing Terraform..."
+      terraform init
+    fi
 
-  # Apply terraform
-  echo "Provisioning VM with Terraform..."
-  terraform apply -auto-approve "${TERRAFORM_VARS[@]}"
+    # Apply terraform (lock prevents other processes from allocating same IP)
+    echo "Provisioning VM with Terraform..."
+    terraform apply -auto-approve "\${TERRAFORM_VARS[@]}"
+FLOCK_SCRIPT
+
+  # Read VM_IP from temp file
+  VM_IP=$(cat "$VM_IP_FILE")
+  rm -f "$VM_IP_FILE"
 
   # Remove old SSH key from known_hosts
   ssh-keygen -R "$VM_IP" 2>/dev/null || true
