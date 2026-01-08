@@ -197,8 +197,8 @@ function list_workspaces {
   VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
   VM_USER=$(terraform output -raw default_user 2>/dev/null)
 
-  # Check VM is reachable
-  if ! ssh -i "$SCRIPT_DIR/vm-ssh-key" -o ConnectTimeout=5 -o BatchMode=yes \
+  # Check VM is reachable (increased timeout for loaded VMs)
+  if ! ssh -i "$SCRIPT_DIR/vm-ssh-key" -o ConnectTimeout=10 -o BatchMode=yes \
        -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null; then
     echo "VM exists but is not running. Start it with: ./agent-vm -b <branch>"
     return 0
