@@ -18,35 +18,15 @@ function destroy_vm {
 
   # Destroy Terraform resources
   echo "Destroying Terraform resources..."
-
-  # Try full destroy first
-  if ! terraform destroy -auto-approve 2>&1 | tee /tmp/destroy-output.txt; then
-    # Check if failure was due to prevent_destroy on shared resources
-    if grep -q "lifecycle.prevent_destroy" /tmp/destroy-output.txt; then
-      echo ""
-      echo "Note: Shared resources (network, base image) are protected from deletion"
-      echo "This is normal - these resources can be safely reused"
-      echo ""
-
-      # Destroy VM-specific resources only
-      terraform destroy -auto-approve \
-        -target=libvirt_domain.debian_vm \
-        -target=libvirt_volume.debian_disk \
-        -target=libvirt_volume.cloud_init_volume \
-        -target=libvirt_cloudinit_disk.cloud_init \
-        -target=null_resource.wait_for_cloud_init \
-        -target=data.external.vm_ip 2>&1 | grep -v "No objects need to be destroyed" || true
-    else
-      # Different error, propagate it
-      echo ""
-      echo "ERROR: terraform destroy failed"
-      cat /tmp/destroy-output.txt
-      echo ""
-      return 1
-    fi
+  if ! terraform destroy -auto-approve; then
+    echo ""
+    echo "ERROR: terraform destroy failed"
+    echo ""
+    echo "To retry:"
+    echo "  cd vm && terraform destroy -auto-approve"
+    echo ""
+    return 1
   fi
-
-  rm -f /tmp/destroy-output.txt
 
   # Clean up mount directory
   local mount_point="$HOME/.agent-vm-mounts/workspace"

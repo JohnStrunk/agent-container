@@ -73,7 +73,6 @@ locals {
 }
 
 # Create default NAT network
-# Note: Shared across all workspaces, so lifecycle prevents destroy
 resource "libvirt_network" "default" {
   name      = "default"
   autostart = true
@@ -98,15 +97,9 @@ resource "libvirt_network" "default" {
       }
     }
   ]
-
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = all
-  }
 }
 
 # Download Debian cloud image
-# Note: Shared across all workspaces, so lifecycle prevents destroy
 resource "libvirt_volume" "debian_base" {
   name = "debian-13-base.qcow2"
   pool = "default"
@@ -121,11 +114,6 @@ resource "libvirt_volume" "debian_base" {
     content = {
       url = var.debian_image_url
     }
-  }
-
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = all
   }
 }
 
