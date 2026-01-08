@@ -4,83 +4,37 @@ set -e -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-function stop_vm {
-  local vm_name="$1"
+function destroy_vm {
+  echo "Destroying VM and all workspaces..."
 
-  if ! vm_domain_exists "$vm_name"; then
-    echo "Error: VM does not exist: $vm_name" >&2
-    exit 1
-  fi
+  # Unmount SSHFS
+  unmount_vm_workspace
 
-  if ! vm_is_running "$vm_name"; then
-    echo "VM is already stopped: $vm_name"
+  # Check if VM exists
+  if ! terraform show >/dev/null 2>&1; then
+    echo "No VM exists."
     exit 0
   fi
 
-  echo "Stopping VM: $vm_name"
-  virsh shutdown "$vm_name"
-  echo "VM stopped (graceful shutdown initiated)."
-}
-
-function destroy_vm {
-  local vm_name="$1"
-  local workspace_name="$2"
-
-  echo "Destroying VM: $vm_name"
-
-  # Extract branch name from VM name (format: repo-branch)
-  local branch_name="${vm_name#*-}"
-
-  # Unmount SSHFS if mounted
-  unmount_vm_workspace
-
-  # Stop and destroy domain if exists
-  if vm_domain_exists "$vm_name"; then
-    virsh destroy "$vm_name" 2>/dev/null || true
-    virsh undefine "$vm_name" 2>/dev/null || true
+  # Destroy VM
+  echo "Destroying Terraform resources..."
+  if ! terraform destroy -auto-approve; then
+    echo ""
+    echo "ERROR: terraform destroy failed"
+    echo ""
+    echo "To retry:"
+    echo "  cd vm && terraform destroy -auto-approve"
+    echo ""
+    return 1
   fi
 
-  # Switch to workspace and destroy Terraform resources
-  if workspace_exists "$workspace_name"; then
-    terraform workspace select "$workspace_name" >/dev/null 2>&1
-
-    # Remove shared resources from state so they won't be destroyed
-    # (network and base volume are shared across all VMs)
-    terraform state rm libvirt_network.default 2>/dev/null || true
-    terraform state rm libvirt_volume.debian_base 2>/dev/null || true
-
-    echo "Destroying Terraform resources..."
-    if ! terraform destroy -auto-approve; then
-      echo ""
-      echo "ERROR: terraform destroy failed"
-      echo ""
-      echo "Workspace '$workspace_name' preserved for manual inspection."
-      echo ""
-      echo "To retry:"
-      echo "  terraform workspace select $workspace_name"
-      echo "  terraform destroy -auto-approve"
-      echo "  terraform workspace select default"
-      echo "  terraform workspace delete $workspace_name"
-      echo ""
-      echo "Or force cleanup (may leave orphaned resources):"
-      echo "  terraform workspace select default"
-      echo "  terraform workspace delete -force $workspace_name"
-      echo ""
-      return 1
-    fi
-
-    # Only delete workspace if destroy succeeded
-    terraform workspace select default >/dev/null 2>&1
-    terraform workspace delete "$workspace_name"
-
-    # Clean up mount directory
-    local mount_point="$HOME/.agent-vm-mounts/${vm_name}"
-    if [ -d "$mount_point" ]; then
-      rmdir "$mount_point" 2>/dev/null || true
-    fi
+  # Clean up mount directory
+  local mount_point="$HOME/.agent-vm-mounts/workspace"
+  if [ -d "$mount_point" ]; then
+    rmdir "$mount_point" 2>/dev/null || true
   fi
 
-  echo "VM destroyed: $vm_name"
+  echo "✓ VM destroyed"
 }
 
 function push_branch_to_vm {
@@ -401,89 +355,7 @@ function warn_resource_overrides_ignored {
   fi
 }
 
-function cleanup_stopped_vms {
-  echo "Cleaning up stopped VMs..."
-  local cleaned_count=0
 
-  # Use process substitution instead of pipe to avoid subshell
-  # This preserves the cleaned_count variable updates
-  while read -r ws; do
-    # Skip empty lines
-    [[ -z "$ws" ]] && continue
-
-    terraform workspace select "$ws" >/dev/null 2>&1
-
-    local vm_name="$ws"
-
-    # Check if VM exists and is stopped
-    if vm_domain_exists "$vm_name" && ! vm_is_running "$vm_name"; then
-      echo "Destroying stopped VM: $vm_name"
-      virsh destroy "$vm_name" 2>/dev/null || true
-      virsh undefine "$vm_name" 2>/dev/null || true
-
-      # Remove shared resources from state so they won't be destroyed
-      terraform state rm libvirt_network.default 2>/dev/null || true
-      terraform state rm libvirt_volume.debian_base 2>/dev/null || true
-
-      # Destroy Terraform resources
-      if ! terraform destroy -auto-approve >/dev/null 2>&1; then
-        echo "  WARNING: terraform destroy failed for $vm_name, skipping workspace deletion"
-        continue
-      fi
-
-      # Switch back and delete workspace (only if destroy succeeded)
-      terraform workspace select default >/dev/null 2>&1
-      terraform workspace delete "$ws" 2>/dev/null
-
-      # Clean up mount directory
-      local mount_point="$HOME/.agent-vm-mounts/${vm_name}"
-      if [ -d "$mount_point" ]; then
-        rmdir "$mount_point" 2>/dev/null || true
-      fi
-
-      cleaned_count=$((cleaned_count + 1))
-    fi
-  done < <(terraform workspace list 2>/dev/null | grep -v default | sed 's/^[* ] *//')
-
-  # Return to default workspace
-  terraform workspace select default >/dev/null 2>&1
-
-  echo "Cleaned up $cleaned_count stopped VMs."
-}
-
-function list_vms {
-  echo "Listing all VMs managed by agent-vm..."
-  echo ""
-  printf "%-30s %-15s %-15s\n" "VM NAME" "STATUS" "IP ADDRESS"
-  printf "%-30s %-15s %-15s\n" "-------" "------" "----------"
-
-  # List all workspaces except default
-  terraform workspace list 2>/dev/null | grep -v default | sed 's/^[* ] *//' | \
-    while read -r ws; do
-      terraform workspace select "$ws" >/dev/null 2>&1
-
-      local vm_name="$ws"
-      local vm_ip
-      vm_ip=$(terraform output -raw vm_ip 2>/dev/null || echo "N/A")
-
-      local status="unknown"
-      if vm_domain_exists "$vm_name"; then
-        if vm_is_running "$vm_name"; then
-          status="running"
-        else
-          status="stopped"
-        fi
-      else
-        status="missing"
-      fi
-
-      printf "%-30s %-15s %-15s\n" "$vm_name" "$status" "$vm_ip"
-    done
-
-  # Return to default workspace
-  terraform workspace select default >/dev/null 2>&1
-  echo ""
-}
 
 function usage {
     cat - <<EOF
@@ -618,13 +490,7 @@ cd "$SCRIPT_DIR" || exit 1
 
 # Handle list action
 if [[ "$ACTION" == "list" ]]; then
-  list_vms
-  exit 0
-fi
-
-# Handle cleanup action
-if [[ "$ACTION" == "cleanup" ]]; then
-  cleanup_stopped_vms
+  list_workspaces
   exit 0
 fi
 
@@ -663,32 +529,10 @@ if [[ "$ACTION" == "fetch" ]]; then
   exit 0
 fi
 
-# Stop and destroy require branch name
-if [[ "$ACTION" == "stop" || "$ACTION" == "destroy" ]] && [[ -z "$BRANCH_NAME" ]]; then
-  echo "Error: --stop and --destroy require -b <branch_name>" >&2
-  exit 1
-fi
-
-# Handle stop/destroy actions
-if [[ "$ACTION" == "stop" || "$ACTION" == "destroy" ]]; then
-  # Determine VM naming (needed for stop/destroy)
-  if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
-    echo "Error: Must be in a git repository to use -b option" >&2
-    exit 1
-  fi
-
-  REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
-  VM_NAME="${REPO_NAME}-${BRANCH_NAME}"
-
-  if [[ "$ACTION" == "stop" ]]; then
-    stop_vm "$VM_NAME"
-    exit 0
-  fi
-
-  if [[ "$ACTION" == "destroy" ]]; then
-    destroy_vm "$VM_NAME" "$VM_NAME"
-    exit 0
-  fi
+# Handle destroy action
+if [[ "$ACTION" == "destroy" ]]; then
+  destroy_vm
+  exit 0
 fi
 
 # Determine VM name from branch
