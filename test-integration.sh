@@ -153,7 +153,7 @@ validate_prerequisites() {
             log "✓ Terraform installed"
         fi
 
-        if ! virsh list &>/dev/null; then
+        if ! virsh --connect qemu:///system list &>/dev/null; then
             log_error "libvirt not accessible"
             log_error "  Check: sudo systemctl status libvirtd"
             ((errors++))
@@ -246,6 +246,11 @@ generate_test_command() {
     cat <<'EOF'
 #!/bin/bash
 set -e -o pipefail
+
+# Source GCP credentials profile if it exists
+if [ -f /etc/profile.d/gcp-ai-agent.sh ]; then
+    source /etc/profile.d/gcp-ai-agent.sh
+fi
 
 echo "[Test] Sending prompt to Claude Code..."
 
@@ -348,37 +353,59 @@ test_vm_approach() {
         return "$EXIT_TEST_FAILED"
     fi
 
-    # Test 3: List workspaces
-    log "Test 3: Listing workspaces..."
-    if ! ./agent-vm --list | grep -q "test-vm-1"; then
+    # Test 3: Test Claude Code environment
+    log "Test 3: Testing Claude Code in VM..."
+    # Write test script to temp file in VM and execute it with bash -l (login shell to load profile.d)
+    test_script=$(generate_test_command)
+    if ! ./agent-vm -b test-vm-1 -- bash -l -c "cat > /tmp/test-claude.sh << 'TESTEOF'
+$test_script
+TESTEOF
+chmod +x /tmp/test-claude.sh
+/tmp/test-claude.sh" < /dev/null; then
+        log_error "Claude Code test failed in VM"
+        return "$EXIT_TEST_FAILED"
+    fi
+
+    # Test 4: List workspaces
+    log "Test 4: Listing workspaces..."
+    list_output=$(./agent-vm --list 2>&1)
+    if ! echo "$list_output" | grep -q "test-vm-1"; then
         log_error "Workspace test-vm-1 not found in list"
         return "$EXIT_TEST_FAILED"
     fi
-    if ! ./agent-vm --list | grep -q "test-vm-2"; then
+    if ! echo "$list_output" | grep -q "test-vm-2"; then
         log_error "Workspace test-vm-2 not found in list"
         return "$EXIT_TEST_FAILED"
     fi
 
-    # Test 4: Verify SSHFS mount
-    log "Test 4: Verifying SSHFS mount..."
-    if [[ -d "$HOME/.agent-vm-mounts/workspace" ]]; then
-        if ! mountpoint -q "$HOME/.agent-vm-mounts/workspace" 2>/dev/null; then
-            log_error "SSHFS mount not active"
+    # Test 5: Verify SSHFS mount
+    log "Test 5: Verifying SSHFS mount..."
+    if ! command -v sshfs >/dev/null 2>&1; then
+        log "SSHFS not installed, skipping mount test"
+    elif [[ -d "$HOME/.agent-vm-mounts/workspace" ]] && mountpoint -q "$HOME/.agent-vm-mounts/workspace" 2>/dev/null; then
+        log "✓ SSHFS mount verified"
+        # Verify we can see workspace files
+        if ls "$HOME/.agent-vm-mounts/workspace" >/dev/null 2>&1; then
+            log "✓ Can access mounted workspace"
+        else
+            log_error "Mount exists but cannot access files"
             return "$EXIT_TEST_FAILED"
         fi
     else
-        log "SSHFS mount directory not found (sshfs may not be installed, skipping)"
+        log_error "SSHFS available but mount not active"
+        log_error "Mount point: $HOME/.agent-vm-mounts/workspace"
+        return "$EXIT_TEST_FAILED"
     fi
 
-    # Test 5: Reconnect to existing workspace
-    log "Test 5: Reconnecting to existing workspace..."
+    # Test 6: Reconnect to existing workspace
+    log "Test 6: Reconnecting to existing workspace..."
     if ! ./agent-vm -b test-vm-1 -- echo "Reconnect successful"; then
         log_error "Failed to reconnect to workspace"
         return "$EXIT_TEST_FAILED"
     fi
 
-    # Test 6: Clean specific workspace
-    log "Test 6: Cleaning specific workspace..."
+    # Test 7: Clean specific workspace
+    log "Test 7: Cleaning specific workspace..."
     if ! echo "y" | ./agent-vm -b test-vm-1 --clean; then
         log_error "Failed to clean workspace"
         return "$EXIT_TEST_FAILED"
@@ -390,8 +417,8 @@ test_vm_approach() {
         return "$EXIT_TEST_FAILED"
     fi
 
-    # Test 7: Clean all workspaces
-    log "Test 7: Cleaning all workspaces..."
+    # Test 8: Clean all workspaces
+    log "Test 8: Cleaning all workspaces..."
     if ! echo "y" | ./agent-vm --clean-all; then
         log_error "Failed to clean all workspaces"
         return "$EXIT_TEST_FAILED"
@@ -405,7 +432,7 @@ test_vm_approach() {
     fi
 
     # Verify VM is destroyed
-    if virsh list --all 2>/dev/null | grep -q "agent-vm"; then
+    if virsh --connect qemu:///system list --all 2>/dev/null | grep -q "agent-vm"; then
         log_error "VM still exists after destroy"
         return "$EXIT_TEST_FAILED"
     fi
