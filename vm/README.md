@@ -98,27 +98,36 @@ The VM persists after exit. Reconnect anytime with the same command.
 ./agent-vm --cleanup
 ```
 
-### Multi-VM Workflow
+## How It Works
 
-```bash
-# Terminal 1
-./agent-vm -b feature-auth
+**Single VM Architecture:**
 
-# Terminal 2 (parallel work)
-./agent-vm -b feature-payments
+- One persistent VM (`agent-vm`) hosts multiple workspace directories
+- Each workspace corresponds to a repository-branch combination
+- Workspaces isolated as separate directories with full git clones
+- SSHFS mounts entire workspace directory to host
 
-# Terminal 3 (reconnect to first VM)
-./agent-vm -b feature-auth
-```
+**Workflow:**
 
-Each branch gets its own VM, worktree, and IP address.
+1. `./agent-vm -b feature-auth` - Creates VM (if needed) and workspace
+2. Edit files at `~/.agent-vm-mounts/workspace/<repo>-feature-auth/`
+3. Build/test in VM SSH session
+4. Commit changes in VM
+5. `./agent-vm -b feature-auth --fetch` - Fetch changes back to host
+
+**Resource Efficiency:**
+
+- Multiple agents share one VM (reduced memory/CPU usage)
+- Workspaces are lightweight directories, not full VMs
+- Single SSHFS mount for all workspaces
 
 ### Filesystem Sharing
 
-Files are shared between host and VM via virtio-9p:
+Files are shared between host and VM via SSHFS:
 
-- `/worktree` - Your branch's worktree (edit on host, build in VM)
-- `/mainrepo` - Main git repository (for commits)
+- Host mount: `~/.agent-vm-mounts/workspace/`
+- VM directory: `~/workspace/`
+- See all workspaces in one mount point
 
 Changes on host appear immediately in VM and vice versa.
 

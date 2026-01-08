@@ -36,39 +36,61 @@ vm/
 
 ### Using agent-vm
 
-The unified `agent-vm` command handles all VM operations:
+The unified `agent-vm` command handles all VM and workspace operations:
 
 ```bash
-# Create/connect to VM
+# Create/connect to workspace (creates VM if needed)
 ./agent-vm -b feature-name
 
-# Create with custom resources (creation-time only)
-./agent-vm -b big-build --memory 16384 --vcpu 8
+# Create VM with custom resources (creation-time only)
+./agent-vm -b feature-name --memory 16384 --vcpu 8
 
-# List all VMs
+# List all workspaces
 ./agent-vm --list
 
-# Stop/destroy VMs
-./agent-vm -b feature-name --stop
-./agent-vm -b feature-name --destroy
+# Force push branch from host to VM
+./agent-vm -b feature-name --push
+
+# Fetch changes from VM to host
+./agent-vm -b feature-name --fetch
+
+# Clean specific workspace
+./agent-vm -b feature-name --clean
+
+# Clean all workspaces (VM stays running)
+./agent-vm --clean-all
+
+# Destroy entire VM
+./agent-vm --destroy
 ```
 
-### Multi-VM Support
+### Single-VM Architecture
 
-Each branch gets its own VM via Terraform workspaces:
+One persistent VM hosts multiple workspace directories:
 
-- Worktree: `~/src/worktrees/<repo>-<branch>/`
-- VM name: `<repo>-<branch>`
-- Isolated IP, SSH key, and state
+- VM name: `agent-vm`
+- Workspaces: `~/workspace/<repo>-<branch>/`
+- Each workspace is a full git clone
+- All workspaces share the same VM
 
 ### Filesystem Sharing
 
-Host files are mounted in VM using virtio-9p:
+Host files are mounted via SSHFS:
 
-- `/worktree` - Branch worktree (editable on host)
-- `/mainrepo` - Main git repo (for commits)
+- Host mount: `~/.agent-vm-mounts/workspace/`
+- VM directory: `~/workspace/`
+- See all workspaces in one mount point
 
 Edit files on host with your IDE, run builds/tests in VM.
+
+### Multi-Workspace Support
+
+Multiple branches work in the same VM:
+
+- Workspaces: `~/workspace/<repo>-<branch>/`
+- Each workspace is isolated (separate git clone)
+- Open multiple terminals to different workspaces
+- VM resources shared across all workspaces
 
 ### Task Management
 
@@ -229,3 +251,15 @@ Six critical bugs were fixed to improve safety and robustness:
 6. **Mount Cleanup**: Mount directories are cleaned up when VMs are destroyed
 
 See `docs/plans/2026-01-07-agent-vm-critical-bug-fixes.md` for full details.
+
+## Architecture Evolution
+
+**2026-01-08:** Redesigned to use single-VM with multiple workspaces
+
+The multi-VM architecture (one VM per branch via Terraform workspaces) was
+replaced with a simpler single-VM design. Multiple branches now work as
+workspace directories within one VM, reducing resource consumption and
+simplifying management.
+
+Previous multi-VM bug fixes (2026-01-07) are preserved in git history but
+no longer relevant to current architecture.
