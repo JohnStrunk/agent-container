@@ -32,7 +32,7 @@ function destroy_vm {
   local branch_name="${vm_name#*-}"
 
   # Unmount SSHFS if mounted
-  unmount_vm_worktree "$branch_name"
+  unmount_vm_workspace
 
   # Stop and destroy domain if exists
   if vm_domain_exists "$vm_name"; then
@@ -177,21 +177,19 @@ function fetch_branch_from_vm {
   unset GIT_SSH_COMMAND
 }
 
-function mount_vm_worktree {
+function mount_vm_workspace {
   local vm_ip="$1"
-  local branch_name="$2"
   local ssh_key="$SCRIPT_DIR/vm-ssh-key"
-  local mount_point="$HOME/.agent-vm-mounts/${REPO_NAME}-${branch_name}"
+  local mount_point="$HOME/.agent-vm-mounts/workspace"
 
   mkdir -p "$mount_point"
 
   # Check if already mounted
   if mountpoint -q "$mount_point" 2>/dev/null; then
-    echo "Already mounted at: $mount_point"
     return 0
   fi
 
-  echo "Mounting VM worktree via SSHFS..."
+  echo "Mounting VM workspace via SSHFS..."
 
   # Check if sshfs is available
   if ! command -v sshfs >/dev/null 2>&1; then
@@ -212,7 +210,7 @@ function mount_vm_worktree {
         -o ServerAliveCountMax=3 \
         -o follow_symlinks \
         -i "$ssh_key" \
-        "user@${vm_ip}:/worktree" "$mount_point" 2>/dev/null; then
+        "user@${vm_ip}:/home/user/workspace" "$mount_point" 2>/dev/null; then
     echo "✓ Mounted at: $mount_point"
     return 0
   else
@@ -221,14 +219,167 @@ function mount_vm_worktree {
   fi
 }
 
-function unmount_vm_worktree {
-  local branch_name="$1"
-  local mount_point="$HOME/.agent-vm-mounts/${REPO_NAME}-${branch_name}"
+function unmount_vm_workspace {
+  local mount_point="$HOME/.agent-vm-mounts/workspace"
 
   if mountpoint -q "$mount_point" 2>/dev/null; then
     echo "Unmounting: $mount_point"
     fusermount -u "$mount_point" 2>/dev/null || umount "$mount_point" 2>/dev/null
     sleep 1
+  fi
+}
+
+function list_workspaces {
+  echo "Listing workspaces in agent-vm..."
+  echo ""
+
+  # Ensure VM is running
+  if ! terraform show >/dev/null 2>&1; then
+    echo "No VM exists. Create one with: ./agent-vm -b <branch>"
+    return 0
+  fi
+
+  # Get VM details
+  VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
+  VM_USER=$(terraform output -raw default_user 2>/dev/null)
+
+  # Check VM is reachable
+  if ! ssh -i "$SCRIPT_DIR/vm-ssh-key" -o ConnectTimeout=5 -o BatchMode=yes \
+       -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null; then
+    echo "VM exists but is not running. Start it with: ./agent-vm -b <branch>"
+    return 0
+  fi
+
+  printf "%-30s %-20s\n" "WORKSPACE" "LAST MODIFIED"
+  printf "%-30s %-20s\n" "---------" "-------------"
+
+  ssh -i "$SCRIPT_DIR/vm-ssh-key" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+    "ls -lt ~/workspace/ 2>/dev/null | tail -n +2" | while read -r line; do
+    # Extract name and date from ls -lt output
+    workspace_name=$(echo "$line" | awk '{print $9}')
+    modified_date=$(echo "$line" | awk '{print $6, $7, $8}')
+    if [[ -n "$workspace_name" ]]; then
+      printf "%-30s %-20s\n" "$workspace_name" "$modified_date"
+    fi
+  done
+
+  echo ""
+}
+
+function clean_workspace {
+  local branch_name="$1"
+  local force="${2:-false}"
+
+  if [[ -z "$branch_name" ]]; then
+    echo "Error: Branch name required for --clean" >&2
+    exit 1
+  fi
+
+  # Get repo name
+  if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+    echo "Error: Must be in a git repository to use -b option" >&2
+    exit 1
+  fi
+
+  REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
+  WORKSPACE_NAME="${REPO_NAME}-${branch_name}"
+
+  # Ensure VM is running
+  ensure_vm_running
+
+  VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
+  VM_USER=$(terraform output -raw default_user 2>/dev/null)
+  SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
+
+  # Check if workspace exists
+  if ! ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+       "test -d ~/workspace/$WORKSPACE_NAME" 2>/dev/null; then
+    echo "Workspace does not exist: $WORKSPACE_NAME"
+    exit 0
+  fi
+
+  # Check for uncommitted changes
+  if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+     "cd ~/workspace/$WORKSPACE_NAME && ! git diff --quiet || ! git diff --cached --quiet" 2>/dev/null; then
+    echo ""
+    echo "⚠️  WARNING: Workspace has uncommitted changes: $WORKSPACE_NAME"
+    echo ""
+  fi
+
+  # Confirm deletion unless force
+  if [[ "$force" != "true" ]]; then
+    read -r -p "Remove workspace $WORKSPACE_NAME? (y/N) " response
+    if [[ ! "$response" =~ ^[Yy]$ ]]; then
+      echo "Cancelled."
+      exit 0
+    fi
+  fi
+
+  echo "Removing workspace: $WORKSPACE_NAME"
+  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+    "rm -rf ~/workspace/$WORKSPACE_NAME"
+  echo "✓ Workspace removed: $WORKSPACE_NAME"
+}
+
+function clean_all_workspaces {
+  local force="${1:-false}"
+
+  # Ensure VM is running
+  ensure_vm_running
+
+  VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
+  VM_USER=$(terraform output -raw default_user 2>/dev/null)
+  SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
+
+  # List workspaces
+  echo "Current workspaces:"
+  list_workspaces
+
+  # Confirm deletion unless force
+  if [[ "$force" != "true" ]]; then
+    read -r -p "Remove ALL workspaces from VM? (y/N) " response
+    if [[ ! "$response" =~ ^[Yy]$ ]]; then
+      echo "Cancelled."
+      exit 0
+    fi
+  fi
+
+  echo "Removing all workspaces..."
+  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+    "rm -rf ~/workspace/*"
+  echo "✓ All workspaces removed"
+}
+
+function ensure_vm_running {
+  # Check if Terraform state exists
+  if ! terraform show >/dev/null 2>&1; then
+    echo "Error: No VM exists. Create one with: ./agent-vm -b <branch>" >&2
+    exit 1
+  fi
+
+  # Check if VM is reachable
+  VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
+  VM_USER=$(terraform output -raw default_user 2>/dev/null)
+
+  if ! ssh -i "$SCRIPT_DIR/vm-ssh-key" -o ConnectTimeout=5 -o BatchMode=yes \
+       -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null; then
+    echo "VM exists but is not running. Starting..."
+    terraform apply -auto-approve
+
+    # Wait for ready
+    echo "Waiting for VM to be ready..."
+    local max_wait=120
+    local elapsed=0
+    while ! ssh -i "$SCRIPT_DIR/vm-ssh-key" -o ConnectTimeout=5 -o BatchMode=yes \
+         -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null; do
+      sleep 5
+      elapsed=$((elapsed + 5))
+      if [[ $elapsed -ge $max_wait ]]; then
+        echo "ERROR: VM failed to start" >&2
+        exit 1
+      fi
+    done
+    echo "✓ VM is ready"
   fi
 }
 
@@ -777,7 +928,7 @@ done
 push_branch_to_vm "$VM_IP" "$BRANCH_NAME"
 
 # Mount VM worktree via SSHFS (non-fatal if it fails)
-mount_vm_worktree "$VM_IP" "$BRANCH_NAME" || true
+mount_vm_workspace "$VM_IP" || true
 
 # Connect to VM
 echo "Connecting to VM: $VM_NAME (IP: $VM_IP)"
