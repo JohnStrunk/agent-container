@@ -207,15 +207,16 @@ function list_workspaces {
   printf "%-30s %-20s\n" "WORKSPACE" "LAST MODIFIED"
   printf "%-30s %-20s\n" "---------" "-------------"
 
-  ssh -i "$SCRIPT_DIR/vm-ssh-key" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-    "ls -lt ~/workspace/ 2>/dev/null | tail -n +2" | while read -r line; do
+  # Use process substitution to avoid subshell issues with pipe
+  while read -r line; do
     # Extract name and date from ls -lt output
     workspace_name=$(echo "$line" | awk '{print $9}')
     modified_date=$(echo "$line" | awk '{print $6, $7, $8}')
     if [[ -n "$workspace_name" ]]; then
       printf "%-30s %-20s\n" "$workspace_name" "$modified_date"
     fi
-  done
+  done < <(ssh -i "$SCRIPT_DIR/vm-ssh-key" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+    "ls -lt ~/workspace/ 2>/dev/null | tail -n +2")
 
   echo ""
 }
