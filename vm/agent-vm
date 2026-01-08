@@ -336,58 +336,58 @@ function list_vms {
 
 function usage {
     cat - <<EOF
-agent-vm: Unified VM workflow for AI coding agents
+agent-vm: Single VM with multiple workspaces for AI coding agents
 
 Usage: $0 [options] [-b <branch_name>] [-- command...]
 
 Options:
-  -b, --branch <name>         Branch name (git branch)
+  -b, --branch <name>         Branch name (required for most operations)
   --memory <MB>               VM memory in MB (default: 4096, creation only)
   --vcpu <count>              Virtual CPUs (default: 4, creation only)
   --disk <size>               Disk size like 60G (default: 40G, creation only)
-  --list                      List all VMs and their status
+  --list                      List all workspaces in VM
   --fetch                     Fetch changes from VM to host (requires -b)
-  --stop                      Stop VM (requires -b)
-  --destroy                   Destroy VM and workspace (requires -b)
-  --cleanup                   Destroy all stopped VMs
+  --push                      Force push branch from host to VM (requires -b)
+  --clean                     Remove workspace from VM (requires -b)
+  --clean-all                 Remove all workspaces (VM stays running)
+  --destroy                   Destroy entire VM and all workspaces
   -h, --help                  Show this help
 
 Arguments:
   command...                  Optional command to execute in VM
-                              (connection closes after execution)
 
 Workflow:
-  1. ./agent-vm -b feature-auth       # Create VM, push branch, mount via SSHFS
-  2. Edit files at ~/.agent-vm-mounts/<repo>-feature-auth/
+  1. ./agent-vm -b feature-auth       # Create VM, create workspace, mount SSHFS
+  2. Edit files at ~/.agent-vm-mounts/workspace/myrepo-feature-auth/
   3. Build/test in VM SSH session
-  4. Commit changes in VM (they're in a full git repo)
+  4. Commit changes in VM
   5. ./agent-vm -b feature-auth --fetch    # Fetch changes back to host
 
 File Sharing:
-  * VM has full git clone at /worktree
-  * Host mounts VM's /worktree via SSHFS at ~/.agent-vm-mounts/<repo>-<branch>/
-  * Edit on host with your IDE, build/test in VM
-  * All git operations happen in VM (commit, status, etc.)
-  * Use --fetch to pull changes back to host branch
+  * VM workspace: ~/workspace/<repo>-<branch>/
+  * Host mount: ~/.agent-vm-mounts/workspace/
+  * See all branches in one mount point
+  * Real-time sync via SSHFS
 
 Examples:
-  $0 -b feature-auth                    # Create/connect to VM
+  $0 -b feature-auth                    # Create/connect to workspace
   $0 -b feature-auth --fetch            # Fetch VM changes to host
+  $0 -b feature-auth --push             # Push host changes to VM
   $0 -b feature-auth -- claude          # Run claude directly
   $0 -b big-build --memory 16384        # Create VM with 16GB RAM
-  $0 --list                             # List all VMs
-  $0 -b feature-auth --destroy          # Destroy VM
+  $0 --list                             # List all workspaces
+  $0 -b old-feature --clean             # Remove workspace
+  $0 --destroy                          # Destroy VM
 
 Storage:
-  * SSHFS mounts: ~/.agent-vm-mounts/<repo>-<branch>/
+  * SSHFS mount: ~/.agent-vm-mounts/workspace/
   * Terraform state: vm/.terraform/
-  * SSH keys: vm/vm-ssh-key (per workspace)
+  * SSH key: vm/vm-ssh-key
 
-Multi-VM:
-  * Each branch gets its own VM via Terraform workspaces
-  * Run same command again to reconnect (opens 2nd terminal)
-  * VMs persist after exit (not destroyed like containers)
-  * Changes stay in VM until you --fetch them
+Multi-Workspace:
+  * Multiple branches in same VM as separate directories
+  * Open multiple terminals to different workspaces
+  * VM persists after exit
 EOF
 }
 
@@ -397,7 +397,7 @@ VM_COMMAND=()
 MEMORY_OVERRIDE=""
 VCPU_OVERRIDE=""
 DISK_OVERRIDE=""
-ACTION=""  # list, stop, destroy, cleanup, or "" for connect
+ACTION=""  # list, fetch, push, clean, clean-all, destroy, or "" for connect
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -425,16 +425,20 @@ while [[ $# -gt 0 ]]; do
             ACTION="fetch"
             shift
             ;;
-        --stop)
-            ACTION="stop"
+        --push)
+            ACTION="push"
+            shift
+            ;;
+        --clean)
+            ACTION="clean"
+            shift
+            ;;
+        --clean-all)
+            ACTION="clean-all"
             shift
             ;;
         --destroy)
             ACTION="destroy"
-            shift
-            ;;
-        --cleanup)
-            ACTION="cleanup"
             shift
             ;;
         -h|--help)
