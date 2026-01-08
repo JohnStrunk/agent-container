@@ -4,7 +4,7 @@ output "vm_name" {
 }
 
 data "external" "vm_ip" {
-  program    = ["bash", "-c", "result=$(virsh --connect qemu:///system net-dhcp-leases default | grep ${var.vm_hostname} | grep -oP '([0-9]{1,3}\\.){3}[0-9]{1,3}' | head -1) ; if [ -z \"$result\" ]; then result=\"not assigned\"; fi ; echo \"$result\" | jq -R '{ip: .}'"]
+  program    = ["bash", "-c", "result=$(virsh --connect qemu:///system domifaddr ${var.vm_name} | grep -oP '([0-9]{1,3}\\.){3}[0-9]{1,3}' | head -1) ; if [ -z \"$result\" ]; then result=\"not assigned\"; fi ; echo \"$result\" | jq -R '{ip: .}'"]
   depends_on = [null_resource.wait_for_cloud_init]
 }
 
