@@ -592,17 +592,13 @@ fi
 REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
 WORKSPACE_NAME="${REPO_NAME}-${BRANCH_NAME}"
 
-# Detect network subnet (same logic as vm-up.sh)
+# Detect network subnet (same logic as before for nested VMs)
 if [ -z "$NETWORK_SUBNET" ]; then
-  # Get the current VM's IP address (if any) on 192.168.x.x
   CURRENT_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)192\.168\.\d+\.\d+(?=/)' | head -1)
 
   if [ -n "$CURRENT_IP" ]; then
-    # Extract third octet from current IP
     CURRENT_THIRD_OCTET=$(echo "$CURRENT_IP" | cut -d. -f3)
 
-    # Use different subnet: if we're on 122 or 123, use 200
-    # Otherwise use current + 1 (wrapping at 255)
     if [ "$CURRENT_THIRD_OCTET" -eq 122 ] || [ "$CURRENT_THIRD_OCTET" -eq 123 ]; then
       NETWORK_SUBNET=200
       echo "Detected outer VM network: 192.168.$CURRENT_THIRD_OCTET.0/24"
@@ -613,187 +609,97 @@ if [ -z "$NETWORK_SUBNET" ]; then
       echo "Using subnet 192.168.$NETWORK_SUBNET.0/24 for nested VM"
     fi
   else
-    # Not inside a VM on 192.168.x.x, use default
     NETWORK_SUBNET=123
   fi
 fi
 
-# Check if workspace exists
-if workspace_exists "$VM_NAME"; then
-  echo "VM workspace exists: $VM_NAME"
+# Check if VM exists
+if terraform show >/dev/null 2>&1; then
+  echo "VM already exists"
 
-  # Select workspace
-  terraform workspace select "$VM_NAME"
-
-  # Check if VM domain exists
-  if vm_domain_exists "$VM_NAME"; then
-    if vm_is_running "$VM_NAME"; then
-      echo "VM is already running: $VM_NAME"
-      warn_resource_overrides_ignored
-    else
-      echo "VM exists but is stopped. Starting..."
-      warn_resource_overrides_ignored
-      virsh start "$VM_NAME"
-      echo "VM started: $VM_NAME"
-    fi
-  else
-    echo "Warning: Workspace exists but VM domain missing. Recreating..."
-    # Workspace exists but VM doesn't - clean up and recreate
-
-    # Remove shared resources from state so they won't be destroyed
-    terraform state rm libvirt_network.default 2>/dev/null || true
-    terraform state rm libvirt_volume.debian_base 2>/dev/null || true
-
-    echo "Cleaning up orphaned workspace resources..."
-    if ! terraform destroy -auto-approve; then
-      echo ""
-      echo "ERROR: Failed to destroy orphaned workspace resources"
-      echo ""
-      echo "Manual cleanup required:"
-      echo "  terraform workspace select $VM_NAME"
-      echo "  terraform state list"
-      echo "  terraform destroy -auto-approve"
-      echo ""
-      echo "Or force deletion (may leave orphaned resources):"
-      echo "  terraform workspace select default"
-      echo "  terraform workspace delete -force $VM_NAME"
-      echo ""
-      exit 1
-    fi
-
-    terraform workspace select default
-    terraform workspace delete "$VM_NAME"
-
-    # Fall through to creation below
-    CREATE_NEW_VM=1
-  fi
-else
-  CREATE_NEW_VM=1
-fi
-
-# Create new VM if needed
-if [[ "${CREATE_NEW_VM:-0}" == "1" ]]; then
-  echo "Creating new VM: $VM_NAME"
-
-  # Create workspace
-  terraform workspace new "$VM_NAME"
-
-  # Allocate IP and provision VM under exclusive lock to prevent race conditions
-  # Lock is held from IP selection through terraform apply completion
-  VM_IP_FILE="/tmp/agent-vm-ip-$$"
-
-  flock -x -w 30 /tmp/agent-vm-ip-allocation.lock bash <<FLOCK_SCRIPT
-    set -e -o pipefail
-
-    # Change to terraform directory
-    cd "$SCRIPT_DIR" || exit 1
-
-    # Source common functions
-    source "$SCRIPT_DIR/vm-common.sh"
-
-    # Find available IP (lock is held by flock)
-    find_available_ip "$SCRIPT_DIR" "$NETWORK_SUBNET"
-    echo "Allocated IP: \$VM_IP"
-
-    # Save IP for parent process
-    echo "\$VM_IP" > "$VM_IP_FILE"
-
-    # Build terraform variables
-    TERRAFORM_VARS=(
-      -var="vm_name=$VM_NAME"
-      -var="vm_hostname=$VM_NAME"
-      -var="vm_ip=\$VM_IP"
-      -var="network_subnet_third_octet=$NETWORK_SUBNET"
-      -var="user_uid=$(id -u)"
-      -var="user_gid=$(id -g)"
-    )
-
-    # Add resource overrides if provided
+  # Warn if resource overrides provided
+  if [[ -n "$MEMORY_OVERRIDE" || -n "$VCPU_OVERRIDE" || -n "$DISK_OVERRIDE" ]]; then
+    echo "WARNING: VM already exists. Resource options ignored."
+    echo "To apply new resources:"
+    echo "  ./agent-vm --destroy"
     if [[ -n "$MEMORY_OVERRIDE" ]]; then
-      TERRAFORM_VARS+=(-var="vm_memory=$MEMORY_OVERRIDE")
+      echo "  ./agent-vm -b $BRANCH_NAME --memory $MEMORY_OVERRIDE"
     fi
     if [[ -n "$VCPU_OVERRIDE" ]]; then
-      TERRAFORM_VARS+=(-var="vm_vcpu=$VCPU_OVERRIDE")
+      echo "  ./agent-vm -b $BRANCH_NAME --vcpu $VCPU_OVERRIDE"
     fi
     if [[ -n "$DISK_OVERRIDE" ]]; then
-      DISK_BYTES=\$(numfmt --from=iec "$DISK_OVERRIDE")
-      TERRAFORM_VARS+=(-var="vm_disk_size=\$DISK_BYTES")
+      echo "  ./agent-vm -b $BRANCH_NAME --disk $DISK_OVERRIDE"
     fi
+    echo ""
+  fi
 
-    # Add GCP credentials if available
-    GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
-    if [[ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then
-      GCP_CREDS_PATH="$GOOGLE_APPLICATION_CREDENTIALS"
-    else
-      GCP_CREDS_PATH="\$GCP_CREDS_DEFAULT"
+  # Ensure VM is running
+  ensure_vm_running
+else
+  echo "Creating new VM: agent-vm"
+
+  # Build terraform variables
+  TERRAFORM_VARS=(
+    -var="vm_name=agent-vm"
+    -var="vm_hostname=agent-vm"
+    -var="network_subnet_third_octet=$NETWORK_SUBNET"
+    -var="user_uid=$(id -u)"
+    -var="user_gid=$(id -g)"
+  )
+
+  # Add resource overrides if provided
+  if [[ -n "$MEMORY_OVERRIDE" ]]; then
+    TERRAFORM_VARS+=(-var="vm_memory=$MEMORY_OVERRIDE")
+  fi
+  if [[ -n "$VCPU_OVERRIDE" ]]; then
+    TERRAFORM_VARS+=(-var="vm_vcpu=$VCPU_OVERRIDE")
+  fi
+  if [[ -n "$DISK_OVERRIDE" ]]; then
+    DISK_BYTES=$(numfmt --from=iec "$DISK_OVERRIDE")
+    TERRAFORM_VARS+=(-var="vm_disk_size=$DISK_BYTES")
+  fi
+
+  # Add GCP credentials if available
+  GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
+  if [[ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then
+    GCP_CREDS_PATH="$GOOGLE_APPLICATION_CREDENTIALS"
+  else
+    GCP_CREDS_PATH="$GCP_CREDS_DEFAULT"
+  fi
+
+  if [[ -f "$GCP_CREDS_PATH" ]]; then
+    echo "Injecting GCP credentials from: $GCP_CREDS_PATH"
+    TERRAFORM_VARS+=(-var="gcp_service_account_key_path=$GCP_CREDS_PATH")
+
+    if [[ -n "$ANTHROPIC_VERTEX_PROJECT_ID" ]]; then
+      TERRAFORM_VARS+=(-var="vertex_project_id=$ANTHROPIC_VERTEX_PROJECT_ID")
     fi
-
-    if [[ -f "\$GCP_CREDS_PATH" ]]; then
-      echo "Injecting GCP credentials from: \$GCP_CREDS_PATH"
-      TERRAFORM_VARS+=(-var="gcp_service_account_key_path=\$GCP_CREDS_PATH")
-
-      if [[ -n "$ANTHROPIC_VERTEX_PROJECT_ID" ]]; then
-        TERRAFORM_VARS+=(-var="vertex_project_id=$ANTHROPIC_VERTEX_PROJECT_ID")
-      fi
-      if [[ -n "$CLOUD_ML_REGION" ]]; then
-        TERRAFORM_VARS+=(-var="vertex_region=$CLOUD_ML_REGION")
-      fi
+    if [[ -n "$CLOUD_ML_REGION" ]]; then
+      TERRAFORM_VARS+=(-var="vertex_region=$CLOUD_ML_REGION")
     fi
+  fi
 
-    # Initialize terraform if needed
-    if [[ ! -d ".terraform" ]] || [[ ! -f ".terraform.lock.hcl" ]]; then
-      echo "Initializing Terraform..."
-      terraform init
-    fi
+  # Initialize terraform if needed
+  if [[ ! -d ".terraform" ]] || [[ ! -f ".terraform.lock.hcl" ]]; then
+    echo "Initializing Terraform..."
+    terraform init
+  fi
 
-    # Import shared resources if they exist in libvirt but not in state
-    # This allows multiple workspaces to share the network and base image
-    echo "Checking if shared resources need to be imported..."
-    if ! terraform state list 2>/dev/null | grep -q "libvirt_network.default"; then
-      echo "Network not in state, checking if it exists in libvirt..."
-      NET_UUID=\$(virsh --connect qemu:///system net-uuid default 2>/dev/null || true)
-      if [ -n "\$NET_UUID" ]; then
-        echo "Importing existing network 'default' (UUID: \$NET_UUID) into workspace..."
-        terraform import libvirt_network.default "\$NET_UUID" || echo "Import failed, will try to create"
-      else
-        echo "Network doesn't exist yet, will create"
-      fi
-    else
-      echo "Network already in state"
-    fi
+  # Apply terraform
+  echo "Provisioning VM with Terraform..."
+  terraform apply -auto-approve "${TERRAFORM_VARS[@]}"
 
-    if ! terraform state list 2>/dev/null | grep -q "libvirt_volume.debian_base"; then
-      echo "Base volume not in state, checking if it exists in libvirt..."
-      if virsh --connect qemu:///system vol-info debian-13-base.qcow2 --pool default &>/dev/null; then
-        echo "Importing existing base volume 'debian-13-base.qcow2' into workspace..."
-        VOL_KEY=\$(virsh --connect qemu:///system vol-key debian-13-base.qcow2 --pool default 2>/dev/null || true)
-        terraform import libvirt_volume.debian_base "\$VOL_KEY" || echo "Import failed, will try to create"
-      else
-        echo "Base volume doesn't exist yet, will create"
-      fi
-    else
-      echo "Base volume already in state"
-    fi
-
-    # Apply terraform (lock prevents other processes from allocating same IP)
-    echo "Provisioning VM with Terraform..."
-    terraform apply -auto-approve "\${TERRAFORM_VARS[@]}"
-FLOCK_SCRIPT
-
-  # Read VM_IP from temp file
-  VM_IP=$(cat "$VM_IP_FILE")
-  rm -f "$VM_IP_FILE"
-
-  # Remove old SSH key from known_hosts
-  ssh-keygen -R "$VM_IP" 2>/dev/null || true
-
-  echo "VM created successfully: $VM_NAME"
+  echo "VM created successfully: agent-vm"
 fi
 
 # Get VM IP and user
 VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
 VM_USER=$(terraform output -raw default_user 2>/dev/null)
 SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
+
+# Remove old SSH key from known_hosts
+ssh-keygen -R "$VM_IP" 2>/dev/null || true
 
 # Wait for VM to be ready
 echo "Waiting for VM to be ready..."
@@ -805,11 +711,11 @@ while ! ssh -i "$SSH_KEY" -o ConnectTimeout=5 -o BatchMode=yes \
   ELAPSED=$((ELAPSED + 5))
   if [[ $ELAPSED -ge $MAX_WAIT ]]; then
     echo "ERROR: VM failed to start within 5 minutes" >&2
-    echo "Check cloud-init logs:"
-    echo "  ssh -i $SSH_KEY root@$VM_IP 'tail -100 /var/log/cloud-init-output.log'"
     exit 1
   fi
 done
+
+echo "✓ VM is ready"
 
 # Push branch to VM
 push_branch_to_vm "$VM_IP" "$BRANCH_NAME" "$WORKSPACE_NAME"
