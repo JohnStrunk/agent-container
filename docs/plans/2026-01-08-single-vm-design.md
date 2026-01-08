@@ -484,3 +484,33 @@ No migration script needed - users can manually fetch work and start clean.
 3. **Workspace snapshots:** Save/restore workspace state
 4. **Multi-repo support:** Better handling of working across different repositories
 5. **Shared workspace pools:** Multiple users sharing VM workspaces (enterprise use case)
+
+## Implementation Notes
+
+**Completed:** 2026-01-08
+
+**Key Implementation Details:**
+
+1. **Terraform simplified:** Single default workspace, static IP .10, no multi-VM variables
+2. **Script structure:** Action handlers (list, fetch, push, clean, etc.) with early returns
+3. **SSHFS mount:** Single mount at `~/.agent-vm-mounts/workspace/`, persists across sessions
+4. **Git workflow:** Push on workspace creation only, explicit `--push` to overwrite
+5. **SSH handling:** Captured output in variables for reliability, 10-second timeout for loaded VMs
+
+**Files Modified:**
+- `vm/variables.tf` - Removed multi-VM variables (worktree_path, main_repo_path, vm_ip)
+- `vm/main.tf` - Static IP, removed filesystem mounts
+- `vm/vm-common.sh` - Removed multi-VM functions, added workspace helpers
+- `vm/agent-vm` - Complete rewrite for single-VM workflow
+- `test-integration.sh` - Updated VM tests for workspace-based testing
+- `vm/CLAUDE.md` - Updated documentation
+- `vm/README.md` - Updated architecture description
+
+**Known Issues:**
+- Integration test Test 3 (workspace listing) has intermittent failures (see `docs/troubleshooting/integration-test-list-flakiness.md`)
+- Root cause appears to be test environment related, not functional issue
+- All functionality verified working through manual testing
+
+**Migration Required:**
+Users with existing multi-VM setups should fetch work from VMs, destroy all VMs,
+and start fresh with new single-VM design.
