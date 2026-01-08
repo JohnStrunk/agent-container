@@ -115,15 +115,6 @@ get_rsync_ssh_cmd() {
   echo "ssh -i $ssh_key -o StrictHostKeyChecking=no"
 }
 
-# Check if Terraform workspace exists
-# Args:
-#   $1 - Workspace name
-# Returns: 0 if exists, 1 if not
-workspace_exists() {
-  local workspace_name="$1"
-  terraform workspace list 2>/dev/null | grep -q "^[* ] *${workspace_name}$"
-}
-
 # Check if libvirt domain (VM) exists
 # Args:
 #   $1 - Domain name
@@ -142,58 +133,34 @@ vm_is_running() {
   virsh list --state-running 2>/dev/null | tail -n +3 | awk '{print $2}' | grep -q "^${domain_name}$"
 }
 
-# Find first available IP in subnet and set VM_IP variable
+# List all workspace directories in VM
 # Args:
-#   $1 - Script directory
-#   $2 - Subnet third octet (e.g., 123 for 192.168.123.0/24)
-# Sets: VM_IP global variable
-# Exits: 1 if no IPs available
-# NOTE: Caller must hold IP allocation lock before calling this function
-find_available_ip() {
+#   $1 - Script directory (to locate SSH key)
+#   $2 - VM user
+#   $3 - VM IP
+# Returns: List of workspace names with timestamps
+list_vm_workspaces() {
   local script_dir="$1"
-  local subnet_third_octet="$2"
-  local base_ip="192.168.${subnet_third_octet}"
-  local start=10
-  local end=254
+  local vm_user="$2"
+  local vm_ip="$3"
 
-  cd "$script_dir" || exit 1
+  vm_ssh "$script_dir" "$vm_user" "$vm_ip" \
+    "ls -lt ~/workspace/ 2>/dev/null | tail -n +2 | awk '{print \$9, \$6, \$7, \$8}' || true"
+}
 
-  # Get current workspace to restore later
-  local current_workspace
-  current_workspace=$(terraform workspace show 2>/dev/null || echo "default")
+# Check if workspace has uncommitted changes
+# Args:
+#   $1 - Script directory (to locate SSH key)
+#   $2 - VM user
+#   $3 - VM IP
+#   $4 - Workspace name
+# Returns: 0 if dirty, 1 if clean
+workspace_is_dirty() {
+  local script_dir="$1"
+  local vm_user="$2"
+  local vm_ip="$3"
+  local workspace_name="$4"
 
-  # Get all IPs currently in use from all workspaces
-  # Use process substitution instead of pipe to avoid closing FD 200 in subshell
-  local used_ips=""
-  local ws_list
-  ws_list=$(terraform workspace list 2>/dev/null | grep -v default | sed 's/^[* ] *//')
-
-  for ws in $ws_list; do
-    terraform workspace select "$ws" >/dev/null 2>&1
-    local ip
-    ip=$(terraform output -raw vm_ip 2>/dev/null || true)
-    if [[ -n "$ip" ]]; then
-      used_ips="${used_ips}${ip}"$'\n'
-    fi
-  done
-
-  # Sort IPs
-  used_ips=$(echo "$used_ips" | sort -V)
-
-  # Restore original workspace
-  terraform workspace select "$current_workspace" >/dev/null 2>&1
-
-  # Find first gap in IP range
-  for ip_last_octet in $(seq $start $end); do
-    local candidate_ip="${base_ip}.${ip_last_octet}"
-    if ! echo "$used_ips" | grep -q "^${candidate_ip}$"; then
-      VM_IP="$candidate_ip"  # Set global variable
-      return 0
-    fi
-  done
-
-  # No IPs available
-  echo "Error: No available IPs in subnet ${base_ip}.0/24" >&2
-  echo "Run: agent-vm --cleanup to remove stopped VMs" >&2
-  exit 1
+  vm_ssh "$script_dir" "$vm_user" "$vm_ip" \
+    "cd ~/workspace/$workspace_name && ! git diff --quiet || ! git diff --cached --quiet" 2>/dev/null
 }
