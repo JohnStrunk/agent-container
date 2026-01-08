@@ -11,22 +11,42 @@ function destroy_vm {
   unmount_vm_workspace
 
   # Check if VM exists
-  if ! terraform show >/dev/null 2>&1; then
+  if ! terraform state list 2>/dev/null | grep -q "libvirt_domain.debian_vm"; then
     echo "No VM exists."
     exit 0
   fi
 
-  # Destroy VM
+  # Destroy Terraform resources
   echo "Destroying Terraform resources..."
-  if ! terraform destroy -auto-approve; then
-    echo ""
-    echo "ERROR: terraform destroy failed"
-    echo ""
-    echo "To retry:"
-    echo "  cd vm && terraform destroy -auto-approve"
-    echo ""
-    return 1
+
+  # Try full destroy first
+  if ! terraform destroy -auto-approve 2>&1 | tee /tmp/destroy-output.txt; then
+    # Check if failure was due to prevent_destroy on shared resources
+    if grep -q "lifecycle.prevent_destroy" /tmp/destroy-output.txt; then
+      echo ""
+      echo "Note: Shared resources (network, base image) are protected from deletion"
+      echo "This is normal - these resources can be safely reused"
+      echo ""
+
+      # Destroy VM-specific resources only
+      terraform destroy -auto-approve \
+        -target=libvirt_domain.debian_vm \
+        -target=libvirt_volume.debian_disk \
+        -target=libvirt_volume.cloud_init_volume \
+        -target=libvirt_cloudinit_disk.cloud_init \
+        -target=null_resource.wait_for_cloud_init \
+        -target=data.external.vm_ip 2>&1 | grep -v "No objects need to be destroyed" || true
+    else
+      # Different error, propagate it
+      echo ""
+      echo "ERROR: terraform destroy failed"
+      cat /tmp/destroy-output.txt
+      echo ""
+      return 1
+    fi
   fi
+
+  rm -f /tmp/destroy-output.txt
 
   # Clean up mount directory
   local mount_point="$HOME/.agent-vm-mounts/workspace"
@@ -158,17 +178,25 @@ function mount_vm_workspace {
     return 1
   fi
 
+  # Mount with absolute ssh key path to avoid issues with relative paths
+  local ssh_key_abs
+  ssh_key_abs="$(cd "$(dirname "$ssh_key")" && pwd)/$(basename "$ssh_key")"
+
   if sshfs -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
         -o reconnect \
         -o ServerAliveInterval=15 \
         -o ServerAliveCountMax=3 \
         -o follow_symlinks \
-        -i "$ssh_key" \
-        "user@${vm_ip}:/home/user/workspace" "$mount_point" 2>/dev/null; then
+        -o IdentityFile="$ssh_key_abs" \
+        "user@${vm_ip}:/home/user/workspace" "$mount_point"; then
     echo "✓ Mounted at: $mount_point"
     return 0
   else
     echo "⚠️  Could not mount via SSHFS (continuing without mount)"
+    echo "   Mount point: $mount_point"
+    echo "   VM IP: $vm_ip"
+    echo "   SSH key: $ssh_key_abs"
     return 1
   fi
 }
@@ -188,7 +216,7 @@ function list_workspaces {
   echo ""
 
   # Ensure VM is running
-  if ! terraform show >/dev/null 2>&1; then
+  if ! terraform state list 2>/dev/null | grep -q "libvirt_domain.debian_vm"; then
     echo "No VM exists. Create one with: ./agent-vm -b <branch>"
     return 0
   fi
@@ -199,7 +227,7 @@ function list_workspaces {
 
   # Check VM is reachable (increased timeout for loaded VMs)
   if ! ssh -i "$SCRIPT_DIR/vm-ssh-key" -o ConnectTimeout=10 -o BatchMode=yes \
-       -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null; then
+       -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null < /dev/null; then
     echo "VM exists but is not running. Start it with: ./agent-vm -b <branch>"
     return 0
   fi
@@ -209,7 +237,7 @@ function list_workspaces {
 
   # Capture SSH output first to debug issues
   workspace_list=$(ssh -i "$SCRIPT_DIR/vm-ssh-key" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-    "ls -lt ~/workspace/ 2>/dev/null | tail -n +2" 2>&1)
+    "ls -lt ~/workspace/ 2>/dev/null | tail -n +2" 2>&1 < /dev/null)
 
   # Debug: uncomment to see raw output
   # echo "DEBUG: workspace_list=$workspace_list" >&2
@@ -257,14 +285,14 @@ function clean_workspace {
 
   # Check if workspace exists
   if ! ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-       "test -d ~/workspace/$WORKSPACE_NAME" 2>/dev/null; then
+       "test -d ~/workspace/$WORKSPACE_NAME" 2>/dev/null < /dev/null; then
     echo "Workspace does not exist: $WORKSPACE_NAME"
     exit 0
   fi
 
   # Check for uncommitted changes
   if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-     "cd ~/workspace/$WORKSPACE_NAME && ! git diff --quiet || ! git diff --cached --quiet" 2>/dev/null; then
+     "cd ~/workspace/$WORKSPACE_NAME && ! git diff --quiet || ! git diff --cached --quiet" 2>/dev/null < /dev/null; then
     echo ""
     echo "⚠️  WARNING: Workspace has uncommitted changes: $WORKSPACE_NAME"
     echo ""
@@ -312,7 +340,7 @@ function clean_all_workspaces {
 
 function ensure_vm_running {
   # Check if Terraform state exists
-  if ! terraform show >/dev/null 2>&1; then
+  if ! terraform state list 2>/dev/null | grep -q "libvirt_domain.debian_vm"; then
     echo "Error: No VM exists. Create one with: ./agent-vm -b <branch>" >&2
     exit 1
   fi
@@ -322,20 +350,24 @@ function ensure_vm_running {
   VM_USER=$(terraform output -raw default_user 2>/dev/null)
 
   if ! ssh -i "$SCRIPT_DIR/vm-ssh-key" -o ConnectTimeout=5 -o BatchMode=yes \
-       -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null; then
+       -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null < /dev/null; then
     echo "VM exists but is not running. Starting..."
     terraform apply -auto-approve
 
-    # Wait for ready
+    # Re-fetch outputs after apply since VM may have new IP
+    VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
+    VM_USER=$(terraform output -raw default_user 2>/dev/null)
+
+    # Wait for ready (increased timeout for nested VMs where cloud-init may be slower)
     echo "Waiting for VM to be ready..."
-    local max_wait=120
+    local max_wait=300
     local elapsed=0
     while ! ssh -i "$SCRIPT_DIR/vm-ssh-key" -o ConnectTimeout=5 -o BatchMode=yes \
-         -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null; do
+         -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null < /dev/null; do
       sleep 5
       elapsed=$((elapsed + 5))
       if [[ $elapsed -ge $max_wait ]]; then
-        echo "ERROR: VM failed to start" >&2
+        echo "ERROR: VM failed to start within 5 minutes" >&2
         exit 1
       fi
     done
@@ -623,8 +655,8 @@ if [ -z "$NETWORK_SUBNET" ]; then
   fi
 fi
 
-# Check if VM exists
-if terraform show >/dev/null 2>&1; then
+# Check if VM exists (check for VM domain specifically, not just any terraform resources)
+if terraform state list 2>/dev/null | grep -q "libvirt_domain.debian_vm"; then
   echo "VM already exists"
 
   # Warn if resource overrides provided
@@ -716,7 +748,7 @@ echo "Waiting for VM to be ready..."
 MAX_WAIT=300
 ELAPSED=0
 while ! ssh -i "$SSH_KEY" -o ConnectTimeout=5 -o BatchMode=yes \
-     -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null; do
+     -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null < /dev/null; do
   sleep 5
   ELAPSED=$((ELAPSED + 5))
   if [[ $ELAPSED -ge $MAX_WAIT ]]; then
