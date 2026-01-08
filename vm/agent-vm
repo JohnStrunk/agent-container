@@ -276,8 +276,6 @@ function clean_workspace {
 }
 
 function clean_all_workspaces {
-  local force="${1:-false}"
-
   # Ensure VM is running
   ensure_vm_running
 
@@ -289,13 +287,11 @@ function clean_all_workspaces {
   echo "Current workspaces:"
   list_workspaces
 
-  # Confirm deletion unless force
-  if [[ "$force" != "true" ]]; then
-    read -r -p "Remove ALL workspaces from VM? (y/N) " response
-    if [[ ! "$response" =~ ^[Yy]$ ]]; then
-      echo "Cancelled."
-      exit 0
-    fi
+  # Confirm deletion
+  read -r -p "Remove ALL workspaces from VM? (y/N) " response
+  if [[ ! "$response" =~ ^[Yy]$ ]]; then
+    echo "Cancelled."
+    exit 0
   fi
 
   echo "Removing all workspaces..."
@@ -494,6 +490,28 @@ if [[ "$ACTION" == "list" ]]; then
   exit 0
 fi
 
+# Handle destroy action
+if [[ "$ACTION" == "destroy" ]]; then
+  destroy_vm
+  exit 0
+fi
+
+# Handle clean-all action
+if [[ "$ACTION" == "clean-all" ]]; then
+  clean_all_workspaces
+  exit 0
+fi
+
+# Handle clean action
+if [[ "$ACTION" == "clean" ]]; then
+  if [[ -z "$BRANCH_NAME" ]]; then
+    echo "Error: --clean requires -b <branch_name>" >&2
+    exit 1
+  fi
+  clean_workspace "$BRANCH_NAME"
+  exit 0
+fi
+
 # Handle fetch action
 if [[ "$ACTION" == "fetch" ]]; then
   if [[ -z "$BRANCH_NAME" ]]; then
@@ -507,47 +525,72 @@ if [[ "$ACTION" == "fetch" ]]; then
   fi
 
   REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
-  VM_NAME="${REPO_NAME}-${BRANCH_NAME}"
+  WORKSPACE_NAME="${REPO_NAME}-${BRANCH_NAME}"
 
-  # Check if VM exists
-  if ! workspace_exists "$VM_NAME"; then
-    echo "Error: No VM exists for branch '$BRANCH_NAME'" >&2
+  # Ensure VM is running
+  ensure_vm_running
+
+  # Get VM IP and user
+  VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
+  VM_USER=$(terraform output -raw default_user 2>/dev/null)
+  SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
+
+  # Check if workspace exists
+  if ! ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+       "test -d ~/workspace/$WORKSPACE_NAME" 2>/dev/null; then
+    echo "Error: Workspace '$WORKSPACE_NAME' does not exist in VM" >&2
     echo "Create it first: ./agent-vm -b $BRANCH_NAME" >&2
     exit 1
   fi
 
-  # Get VM IP
-  terraform workspace select "$VM_NAME" >/dev/null 2>&1
-  VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
-
   # Fetch from VM
-  fetch_branch_from_vm "$VM_IP" "$BRANCH_NAME"
-
-  # Return to default workspace
-  terraform workspace select default >/dev/null 2>&1
+  fetch_branch_from_vm "$VM_IP" "$BRANCH_NAME" "$WORKSPACE_NAME"
 
   exit 0
 fi
 
-# Handle destroy action
-if [[ "$ACTION" == "destroy" ]]; then
-  destroy_vm
-  exit 0
-fi
+# Handle push action
+if [[ "$ACTION" == "push" ]]; then
+  if [[ -z "$BRANCH_NAME" ]]; then
+    echo "Error: --push requires -b <branch_name>" >&2
+    exit 1
+  fi
 
-# Determine VM name from branch
-if [[ -n "$BRANCH_NAME" ]]; then
   if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
-    echo "Error: Must be in a git repository to use -b option" >&2
+    echo "Error: Must be in a git repository to use --push" >&2
     exit 1
   fi
 
   REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
-  VM_NAME="${REPO_NAME}-${BRANCH_NAME}"
-else
+  WORKSPACE_NAME="${REPO_NAME}-${BRANCH_NAME}"
+
+  # Ensure VM is running
+  ensure_vm_running
+
+  # Get VM IP
+  VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
+
+  # Push to VM
+  push_branch_to_vm "$VM_IP" "$BRANCH_NAME" "$WORKSPACE_NAME"
+
+  echo "✓ Branch pushed to VM workspace"
+  exit 0
+fi
+
+# For connect action, branch is required
+if [[ -z "$BRANCH_NAME" ]]; then
   echo "Error: -b <branch> is required" >&2
   exit 1
 fi
+
+# Determine VM name and workspace name
+if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+  echo "Error: Must be in a git repository to use -b option" >&2
+  exit 1
+fi
+
+REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
+WORKSPACE_NAME="${REPO_NAME}-${BRANCH_NAME}"
 
 # Detect network subnet (same logic as vm-up.sh)
 if [ -z "$NETWORK_SUBNET" ]; then
@@ -769,7 +812,7 @@ while ! ssh -i "$SSH_KEY" -o ConnectTimeout=5 -o BatchMode=yes \
 done
 
 # Push branch to VM
-push_branch_to_vm "$VM_IP" "$BRANCH_NAME"
+push_branch_to_vm "$VM_IP" "$BRANCH_NAME" "$WORKSPACE_NAME"
 
 # Mount VM worktree via SSHFS (non-fatal if it fails)
 mount_vm_workspace "$VM_IP" || true
