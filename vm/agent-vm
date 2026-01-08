@@ -717,22 +717,37 @@ done
 
 echo "✓ VM is ready"
 
-# Push branch to VM
-push_branch_to_vm "$VM_IP" "$BRANCH_NAME" "$WORKSPACE_NAME"
-
-# Mount VM worktree via SSHFS (non-fatal if it fails)
+# Mount workspace via SSHFS (if not already mounted)
 mount_vm_workspace "$VM_IP" || true
 
+# Check if workspace directory exists in VM
+WORKSPACE_EXISTS=false
+if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+   "test -d ~/workspace/$WORKSPACE_NAME" 2>/dev/null; then
+  WORKSPACE_EXISTS=true
+fi
+
+# If workspace doesn't exist or --push flag provided, push branch
+if [[ "$WORKSPACE_EXISTS" == "false" ]]; then
+  echo "Creating new workspace: $WORKSPACE_NAME"
+  push_branch_to_vm "$VM_IP" "$BRANCH_NAME" "$WORKSPACE_NAME"
+elif [[ "$ACTION" == "push" ]]; then
+  # Already handled in action handlers above, but this shouldn't happen
+  push_branch_to_vm "$VM_IP" "$BRANCH_NAME" "$WORKSPACE_NAME"
+else
+  echo "Using existing workspace: $WORKSPACE_NAME"
+fi
+
 # Connect to VM
-echo "Connecting to VM: $VM_NAME (IP: $VM_IP)"
+echo "Connecting to VM workspace: $WORKSPACE_NAME (IP: $VM_IP)"
 echo ""
 
 if [[ ${#VM_COMMAND[@]} -gt 0 ]]; then
   # Execute command and exit
   ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-    "cd /worktree 2>/dev/null || cd ~; ${VM_COMMAND[*]}"
+    "cd ~/workspace/$WORKSPACE_NAME 2>/dev/null || cd ~; ${VM_COMMAND[*]}"
 else
   # Interactive session
   ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-    -t "cd /worktree 2>/dev/null || cd ~; exec bash -l"
+    -t "cd ~/workspace/$WORKSPACE_NAME 2>/dev/null || cd ~; exec bash -l"
 fi
