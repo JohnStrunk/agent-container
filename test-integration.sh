@@ -205,12 +205,8 @@ cleanup_vm() {
     if [[ -d vm ]] && [[ -f vm/agent-vm ]]; then
         (
             cd vm || exit
-            # Clean up any test VMs that might still be running
-            ./agent-vm -b test-branch-1 --destroy 2>/dev/null || true
-            ./agent-vm -b test-branch-2 --destroy 2>/dev/null || true
-            ./agent-vm -b test-concurrent-1 --destroy 2>/dev/null || true
-            ./agent-vm -b test-concurrent-2 --destroy 2>/dev/null || true
-            ./agent-vm -b test-cleanup --destroy 2>/dev/null || true
+            # Clean up the single agent-vm instance
+            ./agent-vm --destroy 2>/dev/null || true
         )
     fi
     log "VM cleanup complete"
@@ -329,159 +325,94 @@ test_container() {
     return 0
 }
 
-test_vm() {
-  echo "Testing VM approach with multi-instance support..."
+test_vm_approach() {
+    log_step "Testing VM Approach"
 
-  cd vm/ || exit 1
+    cd vm/ || exit "$EXIT_PREREQ_FAILED"
 
-  # Clean up any leftover resources from previous test runs
-  echo "Cleaning up previous test resources..."
+    # Cleanup any existing test artifacts
+    log "Cleaning up any existing test VMs..."
+    ./agent-vm --destroy 2>/dev/null || true
 
-  # Clean up terraform workspaces
-  terraform workspace select default 2>/dev/null || true
-  for ws in $(terraform workspace list 2>/dev/null | grep -E "workspace-test-branch" | sed 's/^[* ] *//'); do
-    terraform workspace delete -force "$ws" 2>/dev/null || true
-  done
+    # Test 1: Create VM and first workspace
+    log "Test 1: Creating VM with first workspace..."
+    if ! ./agent-vm -b test-vm-1 -- echo "VM test 1 successful"; then
+        log_error "Failed to create VM and workspace"
+        return "$EXIT_TEST_FAILED"
+    fi
 
-  # Clean up libvirt volumes
-  for vol in $(virsh --connect qemu:///system vol-list default 2>/dev/null | grep -E "workspace-test-branch|debian-13-base" | awk '{print $1}'); do
-    virsh --connect qemu:///system vol-delete "$vol" --pool default 2>/dev/null || true
-  done
+    # Test 2: Create second workspace (same VM)
+    log "Test 2: Creating second workspace in same VM..."
+    if ! ./agent-vm -b test-vm-2 -- echo "VM test 2 successful"; then
+        log_error "Failed to create second workspace"
+        return "$EXIT_TEST_FAILED"
+    fi
 
-  # Test 1: Create first VM
-  echo "Test: Creating first VM"
-  ./agent-vm -b test-branch-1 -- echo "VM 1 ready"
-  if [ $? -ne 0 ]; then
-    echo "FAIL: Could not create first VM"
-    return 1
-  fi
+    # Test 3: List workspaces
+    log "Test 3: Listing workspaces..."
+    if ! ./agent-vm --list | grep -q "test-vm-1"; then
+        log_error "Workspace test-vm-1 not found in list"
+        return "$EXIT_TEST_FAILED"
+    fi
+    if ! ./agent-vm --list | grep -q "test-vm-2"; then
+        log_error "Workspace test-vm-2 not found in list"
+        return "$EXIT_TEST_FAILED"
+    fi
 
-  # Test 2: Create second VM (parallel)
-  echo "Test: Creating second VM in parallel"
-  ./agent-vm -b test-branch-2 -- echo "VM 2 ready"
-  if [ $? -ne 0 ]; then
-    echo "FAIL: Could not create second VM"
-    ./agent-vm -b test-branch-1 --destroy
-    return 1
-  fi
+    # Test 4: Verify SSHFS mount
+    log "Test 4: Verifying SSHFS mount..."
+    if [[ -d "$HOME/.agent-vm-mounts/workspace" ]]; then
+        if ! mountpoint -q "$HOME/.agent-vm-mounts/workspace" 2>/dev/null; then
+            log_error "SSHFS mount not active"
+            return "$EXIT_TEST_FAILED"
+        fi
+    else
+        log "SSHFS mount directory not found (sshfs may not be installed, skipping)"
+    fi
 
-  # Test 3: Verify both running
-  echo "Test: Verifying both VMs are running"
-  if ! virsh list --state-running 2>/dev/null | grep -q "test-branch-1"; then
-    echo "FAIL: First VM not running"
-    ./agent-vm -b test-branch-1 --destroy
-    ./agent-vm -b test-branch-2 --destroy
-    return 1
-  fi
+    # Test 5: Reconnect to existing workspace
+    log "Test 5: Reconnecting to existing workspace..."
+    if ! ./agent-vm -b test-vm-1 -- echo "Reconnect successful"; then
+        log_error "Failed to reconnect to workspace"
+        return "$EXIT_TEST_FAILED"
+    fi
 
-  if ! virsh list --state-running 2>/dev/null | grep -q "test-branch-2"; then
-    echo "FAIL: Second VM not running"
-    ./agent-vm -b test-branch-1 --destroy
-    ./agent-vm -b test-branch-2 --destroy
-    return 1
-  fi
+    # Test 6: Clean specific workspace
+    log "Test 6: Cleaning specific workspace..."
+    if ! echo "y" | ./agent-vm -b test-vm-1 --clean; then
+        log_error "Failed to clean workspace"
+        return "$EXIT_TEST_FAILED"
+    fi
 
-  # Test 4: Verify /worktree is accessible
-  # Note: virtio-9p mounts don't work in nested virtualization, so we use git-based sync
-  echo "Test: Verifying /worktree is accessible"
-  if ! ./agent-vm -b test-branch-1 -- test -d /worktree/.git; then
-    echo "FAIL: /worktree git repo not accessible in first VM"
-    ./agent-vm -b test-branch-1 --destroy
-    ./agent-vm -b test-branch-2 --destroy
-    return 1
-  fi
+    # Verify workspace is gone
+    if ./agent-vm --list | grep -q "test-vm-1"; then
+        log_error "Workspace test-vm-1 still exists after clean"
+        return "$EXIT_TEST_FAILED"
+    fi
 
-  # Test 5: Test reconnection
-  echo "Test: Reconnecting to first VM"
-  if ! ./agent-vm -b test-branch-1 -- echo "Reconnected"; then
-    echo "FAIL: Could not reconnect to first VM"
-    ./agent-vm -b test-branch-1 --destroy
-    ./agent-vm -b test-branch-2 --destroy
-    return 1
-  fi
+    # Test 7: Clean all workspaces
+    log "Test 7: Cleaning all workspaces..."
+    if ! echo "y" | ./agent-vm --clean-all; then
+        log_error "Failed to clean all workspaces"
+        return "$EXIT_TEST_FAILED"
+    fi
 
-  # Test 6: Verify list command
-  echo "Test: Listing VMs"
-  if ! ./agent-vm --list | grep -q "test-branch-1"; then
-    echo "FAIL: List command did not show first VM"
-    ./agent-vm -b test-branch-1 --destroy
-    ./agent-vm -b test-branch-2 --destroy
-    return 1
-  fi
+    # Test 8: Destroy VM
+    log "Test 8: Destroying VM..."
+    if ! ./agent-vm --destroy; then
+        log_error "Failed to destroy VM"
+        return "$EXIT_TEST_FAILED"
+    fi
 
-  # Test 7: Verify dirty check prevents fetch (Issue #1)
-  echo "Test: Dirty check prevents fetch with uncommitted changes"
-  ./agent-vm -b test-branch-1 -- bash -c "cd /worktree && echo 'dirty' >> test-dirty.txt"
+    # Verify VM is destroyed
+    if virsh list --all 2>/dev/null | grep -q "agent-vm"; then
+        log_error "VM still exists after destroy"
+        return "$EXIT_TEST_FAILED"
+    fi
 
-  # Try to fetch (should fail with uncommitted changes)
-  if ./agent-vm -b test-branch-1 --fetch 2>&1 | grep -q "uncommitted changes"; then
-    echo "PASS: Fetch correctly blocked on dirty working tree"
-  else
-    echo "FAIL: Fetch should have been blocked on dirty working tree"
-    ./agent-vm -b test-branch-1 --destroy
-    ./agent-vm -b test-branch-2 --destroy
-    return 1
-  fi
-
-  # Clean up the dirty file
-  ./agent-vm -b test-branch-1 -- bash -c "cd /worktree && rm -f test-dirty.txt"
-
-  # Test 8: Verify concurrent VM creation with different IPs (Issue #2)
-  echo "Test: Concurrent VM creation with different IPs"
-  ./agent-vm -b test-concurrent-1 -- echo "VM 1" &
-  PID1=$!
-  ./agent-vm -b test-concurrent-2 -- echo "VM 2" &
-  PID2=$!
-
-  wait $PID1
-  wait $PID2
-
-  # Get IPs and verify they're different
-  IP1=$(./agent-vm --list | grep test-concurrent-1 | awk '{print $3}')
-  IP2=$(./agent-vm --list | grep test-concurrent-2 | awk '{print $3}')
-
-  if [ "$IP1" != "$IP2" ] && [ -n "$IP1" ] && [ -n "$IP2" ]; then
-    echo "PASS: Concurrent VMs have different IPs ($IP1 vs $IP2)"
-  else
-    echo "FAIL: Concurrent VMs have same IP or missing IP"
-    ./agent-vm -b test-concurrent-1 --destroy
-    ./agent-vm -b test-concurrent-2 --destroy
-    ./agent-vm -b test-branch-1 --destroy
-    ./agent-vm -b test-branch-2 --destroy
-    return 1
-  fi
-
-  # Clean up concurrent test VMs
-  ./agent-vm -b test-concurrent-1 --destroy
-  ./agent-vm -b test-concurrent-2 --destroy
-
-  # Test 9: Verify cleanup correctly counts stopped VMs (Issue #5)
-  echo "Test: Cleanup correctly counts stopped VMs"
-
-  # Create and stop a VM
-  ./agent-vm -b test-cleanup -- echo "test"
-  virsh shutdown workspace-test-cleanup
-  sleep 5
-
-  # Run cleanup and verify count
-  if ./agent-vm --cleanup 2>&1 | grep -q "Cleaned up 1 stopped"; then
-    echo "PASS: Cleanup correctly reported 1 VM cleaned"
-  else
-    echo "FAIL: Cleanup did not report correct count"
-    ./agent-vm -b test-cleanup --destroy 2>/dev/null || true
-    ./agent-vm -b test-branch-1 --destroy
-    ./agent-vm -b test-branch-2 --destroy
-    return 1
-  fi
-
-  # Cleanup
-  echo "Cleaning up test VMs..."
-  ./agent-vm -b test-branch-1 --destroy
-  ./agent-vm -b test-branch-2 --destroy
-
-  cd ..
-  echo "VM tests PASSED"
-  return 0
+    cd ..
+    log "VM approach tests passed"
+    return "$EXIT_SUCCESS"
 }
 
 main() {
@@ -516,14 +447,14 @@ main() {
             exit "$EXIT_TEST_FAILED"
         fi
     elif [[ "$TEST_TYPE" == "vm" ]]; then
-        if ! test_vm; then
+        if ! test_vm_approach; then
             exit "$EXIT_TEST_FAILED"
         fi
     elif [[ "$TEST_TYPE" == "all" ]]; then
         if ! test_container; then
             exit "$EXIT_TEST_FAILED"
         fi
-        if ! test_vm; then
+        if ! test_vm_approach; then
             exit "$EXIT_TEST_FAILED"
         fi
     fi
