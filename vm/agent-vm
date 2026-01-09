@@ -373,6 +373,27 @@ function warn_resource_overrides_ignored {
   fi
 }
 
+function install_precommit_hooks {
+  local vm_ip="$1"
+  local workspace_name="$2"
+  local ssh_key="$SCRIPT_DIR/vm-ssh-key"
+
+  # Check if .pre-commit-config.yaml exists in workspace
+  if ssh -i "$ssh_key" -o StrictHostKeyChecking=no "user@$vm_ip" \
+     "test -f ~/workspace/$workspace_name/.pre-commit-config.yaml" 2>/dev/null < /dev/null; then
+
+    # Install pre-commit hooks
+    if ssh -i "$ssh_key" -o StrictHostKeyChecking=no "user@$vm_ip" \
+       "cd ~/workspace/$workspace_name && pre-commit install" 2>/dev/null < /dev/null; then
+      echo "✓ Pre-commit hooks installed"
+    else
+      echo ""
+      echo "⚠️  WARNING: Could not install pre-commit hooks"
+      echo "You can install them manually: cd ~/workspace/$workspace_name && pre-commit install"
+      echo ""
+    fi
+  fi
+}
 
 
 function usage {
