@@ -6,7 +6,7 @@ approaches.
 ## Choose Your Approach
 
 | Feature | Container | VM |
-|---------|-----------|-----|
+| ------- | --------- | --- |
 | **Startup time** | ~2 seconds | ~30-60 seconds |
 | **Isolation** | Strong (namespaces) | Strongest (full VM) |
 | **Nested virtualization** | No | Yes (libvirt/KVM) |
