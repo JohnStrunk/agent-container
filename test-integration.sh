@@ -153,7 +153,7 @@ validate_prerequisites() {
             log "✓ Terraform installed"
         fi
 
-        if ! virsh list &>/dev/null; then
+        if ! virsh --connect qemu:///system list &>/dev/null; then
             log_error "libvirt not accessible"
             log_error "  Check: sudo systemctl status libvirtd"
             ((errors++))
@@ -201,18 +201,12 @@ cleanup_container() {
 
 # shellcheck disable=SC2317
 cleanup_vm() {
-    log "Cleaning up VM..."
-    if [[ -d vm ]] && [[ -f vm/main.tf ]]; then
+    log "Cleaning up VMs..."
+    if [[ -d vm ]] && [[ -f vm/agent-vm ]]; then
         (
             cd vm || exit
-            if terraform state list 2>/dev/null | grep -q .; then
-                terraform destroy -auto-approve \
-                    -var="user_uid=$(id -u)" \
-                    -var="user_gid=$(id -g)" 2>&1 | \
-                    grep -v "^$" || true
-            else
-                log "No VM to clean up"
-            fi
+            # Clean up the single agent-vm instance
+            ./agent-vm --destroy 2>/dev/null || true
         )
     fi
     log "VM cleanup complete"
@@ -252,6 +246,11 @@ generate_test_command() {
     cat <<'EOF'
 #!/bin/bash
 set -e -o pipefail
+
+# Source GCP credentials profile if it exists
+if [ -f /etc/profile.d/gcp-ai-agent.sh ]; then
+    source /etc/profile.d/gcp-ai-agent.sh
+fi
 
 echo "[Test] Sending prompt to Claude Code..."
 
@@ -331,111 +330,175 @@ test_container() {
     return 0
 }
 
-test_vm() {
-    log_step "Starting VM Integration Test"
-    local start_time
-    start_time=$(date +%s)
+test_vm_approach() {
+    log_step "Testing VM Approach"
 
-    # Change to vm directory
-    cd vm || {
-        log_error "vm directory not found"
-        return 1
+    cd vm/ || exit "$EXIT_PREREQ_FAILED"
+
+    # Save repo root and current branch to restore later
+    local repo_root
+    repo_root="$(cd .. && pwd)"
+    local original_branch
+    original_branch=$(git -C "$repo_root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    local original_dir
+    original_dir="$(pwd)"
+    log "Saved original branch: ${original_branch:-<detached HEAD>}"
+    log "Repo root: $repo_root"
+
+    # Generate unique branch names to avoid conflicts
+    local timestamp
+    timestamp=$(date +%s)
+    local test_branch_1="test-vm-integration-${timestamp}-1"
+    local test_branch_2="test-vm-integration-${timestamp}-2"
+    log "Using temporary branches: $test_branch_1, $test_branch_2"
+
+    # Cleanup function for temporary branches
+    # shellcheck disable=SC2317
+    cleanup_test_branches() {
+        local exit_code=$?
+
+        log "Cleaning up temporary test branches..."
+
+        # Change to repo root using absolute path
+        cd "$repo_root" || {
+            log_error "Failed to cd to repo root: $repo_root"
+            return "$exit_code"
+        }
+
+        # Restore original branch first (so we can delete test branches)
+        if [[ -n "$original_branch" ]]; then
+            current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+            if [[ "$current_branch" != "$original_branch" ]]; then
+                log "Restoring original branch: $original_branch"
+                git checkout "$original_branch" 2>/dev/null || log_error "Failed to restore original branch"
+            fi
+        fi
+
+        # Delete test branches if they exist (must be done after checkout to avoid "cannot delete checked out branch" error)
+        if git show-ref --verify --quiet "refs/heads/$test_branch_1"; then
+            log "Deleting branch: $test_branch_1"
+            git branch -D "$test_branch_1" 2>/dev/null || true
+        fi
+
+        if git show-ref --verify --quiet "refs/heads/$test_branch_2"; then
+            log "Deleting branch: $test_branch_2"
+            git branch -D "$test_branch_2" 2>/dev/null || true
+        fi
+
+        # Return to original directory
+        cd "$original_dir" || log_error "Failed to restore directory: $original_dir"
+
+        return "$exit_code"
     }
 
-    # Source common VM functions
-    # shellcheck source=vm/vm-common.sh
-    # shellcheck disable=SC1091
-    source "./vm-common.sh"
+    # Set trap to cleanup branches on exit
+    trap cleanup_test_branches RETURN
 
-    # Step 1: Check for existing VM and destroy it
-    log "[VM] Checking for existing VM..."
-    if terraform state list 2>/dev/null | grep -q libvirt_domain.agent_vm; then
-        log "[VM] Found existing VM from previous test, destroying..."
-        terraform destroy -auto-approve \
-            -var="user_uid=$(id -u)" \
-            -var="user_gid=$(id -g)" 2>&1 | \
-            grep -v "^$" || true
+    # Cleanup any existing test artifacts
+    log "Cleaning up any existing test VMs..."
+    ./agent-vm --destroy 2>/dev/null || true
+
+    # Test 1: Create VM and first workspace
+    log "Test 1: Creating VM with first workspace..."
+    if ! ./agent-vm -b "$test_branch_1" -- echo "VM test 1 successful"; then
+        log_error "Failed to create VM and workspace"
+        return "$EXIT_TEST_FAILED"
     fi
 
-    # Step 2: Provision VM
-    log "[VM] Provisioning VM with Terraform..."
-
-    # Export GOOGLE_APPLICATION_CREDENTIALS for vm-up.sh
-    export GOOGLE_APPLICATION_CREDENTIALS="$GCP_CREDS_PATH"
-
-    if ! run_with_timeout 300 ./vm-up.sh; then
-        log_error "VM provisioning failed"
-        cd .. || return 1
-        return 1
+    # Test 2: Create second workspace (same VM)
+    log "Test 2: Creating second workspace in same VM..."
+    if ! ./agent-vm -b "$test_branch_2" -- echo "VM test 2 successful"; then
+        log_error "Failed to create second workspace"
+        return "$EXIT_TEST_FAILED"
     fi
 
-    local provision_time
-    provision_time=$(($(date +%s) - start_time))
-    log "[VM] VM provisioned (${provision_time}s)"
-
-    # Step 3: Get VM IP
-    local vm_ip
-    vm_ip=$(terraform output -raw vm_ip 2>/dev/null || echo "")
-    if [[ -z "$vm_ip" ]]; then
-        log_error "Failed to get VM IP from terraform output"
-        cd .. || return 1
-        return 1
+    # Test 3: Test Claude Code environment
+    log "Test 3: Testing Claude Code in VM..."
+    # Write test script to temp file in VM and execute it with bash -l (login shell to load profile.d)
+    test_script=$(generate_test_command)
+    if ! ./agent-vm -b "$test_branch_1" -- bash -l -c "cat > /tmp/test-claude.sh << 'TESTEOF'
+$test_script
+TESTEOF
+chmod +x /tmp/test-claude.sh
+/tmp/test-claude.sh" < /dev/null; then
+        log_error "Claude Code test failed in VM"
+        return "$EXIT_TEST_FAILED"
     fi
 
-    log "[VM] VM IP: $vm_ip"
-
-    # Get VM default user
-    local vm_user
-    vm_user=$(terraform output -raw default_user 2>/dev/null || echo "")
-    if [[ -z "$vm_user" ]]; then
-        log_error "Failed to get VM username from terraform output"
-        cd .. || return 1
-        return 1
+    # Test 4: List workspaces
+    log "Test 4: Listing workspaces..."
+    list_output=$(./agent-vm --list 2>&1)
+    if ! echo "$list_output" | grep -q "$test_branch_1"; then
+        log_error "Workspace $test_branch_1 not found in list"
+        return "$EXIT_TEST_FAILED"
+    fi
+    if ! echo "$list_output" | grep -q "$test_branch_2"; then
+        log_error "Workspace $test_branch_2 not found in list"
+        return "$EXIT_TEST_FAILED"
     fi
 
-    log "[VM] VM user: $vm_user"
-
-    # Step 4: Verify SSH connectivity
-    # Note: Terraform's null_resource.wait_for_cloud_init already confirmed cloud-init completed
-    # Give the VM a few seconds for SSH service to be fully ready for user connections
-    log "[VM] Waiting for SSH service to be ready..."
-    sleep 5
-
-    log "[VM] Verifying SSH connectivity as $vm_user..."
-
-    # Use vm_ssh function with retry logic
-    local retry_count=0
-    local max_retries=30
-    until vm_ssh "." "$vm_user" "$vm_ip" 'echo SSH connection successful' >/dev/null 2>&1; do
-        retry_count=$((retry_count + 1))
-        if [[ $retry_count -ge $max_retries ]]; then
-            log_error "SSH connection as $vm_user failed after $max_retries attempts"
-            cd .. || return 1
-            return 1
+    # Test 5: Verify SSHFS mount
+    log "Test 5: Verifying SSHFS mount..."
+    if ! command -v sshfs >/dev/null 2>&1; then
+        log "SSHFS not installed, skipping mount test"
+    elif [[ -d "$HOME/.agent-vm-mounts/workspace" ]] && mountpoint -q "$HOME/.agent-vm-mounts/workspace" 2>/dev/null; then
+        log "✓ SSHFS mount verified"
+        # Verify we can see workspace files
+        if ls "$HOME/.agent-vm-mounts/workspace" >/dev/null 2>&1; then
+            log "✓ Can access mounted workspace"
+        else
+            log_error "Mount exists but cannot access files"
+            return "$EXIT_TEST_FAILED"
         fi
-        sleep 2
-    done
-
-    log "[VM] SSH connectivity verified"
-
-    # Step 5: Run Claude test via SSH
-    log "[VM] Testing Claude Code in VM..."
-
-    # Execute test via SSH (SSH connectivity already verified)
-    # Use login shell (-l) to source /etc/profile.d scripts for GCP env vars
-    if ! run_with_timeout 90 ssh -i ./vm-ssh-key -o StrictHostKeyChecking=no \
-        "$vm_user@${vm_ip}" "bash -l -s" < <(generate_test_command); then
-        log_error "Claude test failed in VM"
-        cd .. || return 1
-        return 1
+    else
+        log_error "SSHFS available but mount not active"
+        log_error "Mount point: $HOME/.agent-vm-mounts/workspace"
+        return "$EXIT_TEST_FAILED"
     fi
 
-    cd .. || return 1
+    # Test 6: Reconnect to existing workspace
+    log "Test 6: Reconnecting to existing workspace..."
+    if ! ./agent-vm -b "$test_branch_1" -- echo "Reconnect successful"; then
+        log_error "Failed to reconnect to workspace"
+        return "$EXIT_TEST_FAILED"
+    fi
 
-    local total_time
-    total_time=$(($(date +%s) - start_time))
-    log_step "VM Test: PASS (${total_time}s)"
-    return 0
+    # Test 7: Clean specific workspace
+    log "Test 7: Cleaning specific workspace..."
+    if ! echo "y" | ./agent-vm -b "$test_branch_1" --clean; then
+        log_error "Failed to clean workspace"
+        return "$EXIT_TEST_FAILED"
+    fi
+
+    # Verify workspace is gone
+    if ./agent-vm --list | grep -q "$test_branch_1"; then
+        log_error "Workspace $test_branch_1 still exists after clean"
+        return "$EXIT_TEST_FAILED"
+    fi
+
+    # Test 8: Clean all workspaces
+    log "Test 8: Cleaning all workspaces..."
+    if ! echo "y" | ./agent-vm --clean-all; then
+        log_error "Failed to clean all workspaces"
+        return "$EXIT_TEST_FAILED"
+    fi
+
+    # Test 9: Destroy VM
+    log "Test 9: Destroying VM..."
+    if ! ./agent-vm --destroy; then
+        log_error "Failed to destroy VM"
+        return "$EXIT_TEST_FAILED"
+    fi
+
+    # Verify VM is destroyed
+    if virsh --connect qemu:///system list --all 2>/dev/null | grep -q "agent-vm"; then
+        log_error "VM still exists after destroy"
+        return "$EXIT_TEST_FAILED"
+    fi
+
+    cd ..
+    log "VM approach tests passed"
+    return "$EXIT_SUCCESS"
 }
 
 main() {
@@ -470,14 +533,14 @@ main() {
             exit "$EXIT_TEST_FAILED"
         fi
     elif [[ "$TEST_TYPE" == "vm" ]]; then
-        if ! test_vm; then
+        if ! test_vm_approach; then
             exit "$EXIT_TEST_FAILED"
         fi
     elif [[ "$TEST_TYPE" == "all" ]]; then
         if ! test_container; then
             exit "$EXIT_TEST_FAILED"
         fi
-        if ! test_vm; then
+        if ! test_vm_approach; then
             exit "$EXIT_TEST_FAILED"
         fi
     fi

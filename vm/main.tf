@@ -40,6 +40,9 @@ resource "local_file" "ssh_public_key" {
 }
 
 locals {
+  # Static IP for the VM
+  vm_static_ip = "192.168.${var.network_subnet_third_octet}.10"
+
   # Use dynamically generated SSH public key
   ssh_keys = [tls_private_key.vm_ssh_key.public_key_openssh]
 
@@ -245,6 +248,7 @@ resource "libvirt_domain" "debian_vm" {
             network = libvirt_network.default.name
           }
         }
+        wait_for_lease = true
       }
     ]
 
@@ -277,9 +281,9 @@ resource "null_resource" "wait_for_cloud_init" {
   provisioner "local-exec" {
     command = <<-EOT
       set -e
-      echo "Waiting for VM to obtain IP address..."
+      echo "Waiting for VM to obtain IP address from DHCP..."
       for i in $(seq 1 60); do
-        IP=$(virsh --connect qemu:///system net-dhcp-leases default | grep ${var.vm_hostname} | grep -oP '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1 || true)
+        IP=$(virsh --connect qemu:///system domifaddr ${var.vm_name} | grep -oP '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -1 || true)
         if [ -n "$IP" ]; then
           echo "VM obtained IP: $IP"
           echo "Waiting for SSH to become available and cloud-init to complete..."
