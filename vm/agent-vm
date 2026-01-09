@@ -113,19 +113,40 @@ function fetch_branch_from_vm {
   # Set up SSH key for git
   export GIT_SSH_COMMAND="ssh -i $ssh_key -o StrictHostKeyChecking=no"
 
+  # Check if branch is currently checked out
+  current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+
   # Fetch branch from VM
-  if git fetch "ssh://user@${vm_ip}/home/user/workspace/$workspace_name" "$branch_name:$branch_name" 2>&1; then
-    echo ""
-    echo "✓ Branch '$branch_name' updated in main repo"
-    echo ""
-    echo "To view changes:"
-    echo "  git checkout $branch_name"
-    echo "  git log"
-    echo ""
+  if [ "$current_branch" = "$branch_name" ]; then
+    # Branch is checked out - use pull to update working tree
+    echo "Branch '$branch_name' is currently checked out - using git pull..."
+    if git pull "ssh://user@${vm_ip}/home/user/workspace/$workspace_name" "$branch_name" 2>&1; then
+      echo ""
+      echo "✓ Branch '$branch_name' updated and working tree synchronized"
+      echo ""
+      echo "To view changes:"
+      echo "  git log"
+      echo ""
+    else
+      echo "Error: Could not pull branch '$branch_name' from workspace '$workspace_name'" >&2
+      unset GIT_SSH_COMMAND
+      return 1
+    fi
   else
-    echo "Error: Could not fetch branch '$branch_name' from workspace '$workspace_name'" >&2
-    unset GIT_SSH_COMMAND
-    return 1
+    # Branch is not checked out - use fetch to update ref only
+    if git fetch "ssh://user@${vm_ip}/home/user/workspace/$workspace_name" "$branch_name:$branch_name" 2>&1; then
+      echo ""
+      echo "✓ Branch '$branch_name' updated in main repo"
+      echo ""
+      echo "To view changes:"
+      echo "  git checkout $branch_name"
+      echo "  git log"
+      echo ""
+    else
+      echo "Error: Could not fetch branch '$branch_name' from workspace '$workspace_name'" >&2
+      unset GIT_SSH_COMMAND
+      return 1
+    fi
   fi
 
   unset GIT_SSH_COMMAND
