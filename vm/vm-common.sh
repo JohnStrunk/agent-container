@@ -114,3 +114,53 @@ get_rsync_ssh_cmd() {
 
   echo "ssh -i $ssh_key -o StrictHostKeyChecking=no"
 }
+
+# Check if libvirt domain (VM) exists
+# Args:
+#   $1 - Domain name
+# Returns: 0 if exists, 1 if not
+vm_domain_exists() {
+  local domain_name="$1"
+  virsh list --all 2>/dev/null | tail -n +3 | awk '{print $2}' | grep -q "^${domain_name}$"
+}
+
+# Check if VM is running
+# Args:
+#   $1 - Domain name
+# Returns: 0 if running, 1 if not
+vm_is_running() {
+  local domain_name="$1"
+  virsh list --state-running 2>/dev/null | tail -n +3 | awk '{print $2}' | grep -q "^${domain_name}$"
+}
+
+# List all workspace directories in VM
+# Args:
+#   $1 - Script directory (to locate SSH key)
+#   $2 - VM user
+#   $3 - VM IP
+# Returns: List of workspace names with timestamps
+list_vm_workspaces() {
+  local script_dir="$1"
+  local vm_user="$2"
+  local vm_ip="$3"
+
+  vm_ssh "$script_dir" "$vm_user" "$vm_ip" \
+    "ls -lt ~/workspace/ 2>/dev/null | tail -n +2 | awk '{print \$9, \$6, \$7, \$8}' || true"
+}
+
+# Check if workspace has uncommitted changes
+# Args:
+#   $1 - Script directory (to locate SSH key)
+#   $2 - VM user
+#   $3 - VM IP
+#   $4 - Workspace name
+# Returns: 0 if dirty, 1 if clean
+workspace_is_dirty() {
+  local script_dir="$1"
+  local vm_user="$2"
+  local vm_ip="$3"
+  local workspace_name="$4"
+
+  vm_ssh "$script_dir" "$vm_user" "$vm_ip" \
+    "cd ~/workspace/$workspace_name && ! git diff --quiet || ! git diff --cached --quiet" 2>/dev/null
+}

@@ -5,8 +5,11 @@
 This repository provides **two approaches** for creating isolated AI
 development environments:
 
-1. **Container** - Docker-based, fast startup, strong isolation
-2. **VM** - Libvirt/KVM-based, full VM isolation, nested virtualization
+1. **Container** - Docker-based, `start-work` command, fast startup
+2. **VM** - Libvirt/KVM-based, `agent-vm` command (similar workflow)
+
+Both approaches support worktrees, filesystem sharing, and multi-instance
+operation.
 
 ## Determining Which Approach You're Working With
 
@@ -17,7 +20,7 @@ pwd
 ```
 
 - If in `/path/to/repo/container` → Use container approach
-- If in `/path/to/repo/vm` → Use VM approach
+- If in `/path/to/repo/vm` → Use VM approach (`agent-vm` command)
 - If at root `/path/to/repo` → Ask user which approach they want
 
 ## Approach-Specific Documentation

@@ -1,0 +1,1672 @@
+# Unified VM Workflow Implementation Plan
+
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to
+> implement this plan task-by-task.
+
+**Goal:** Create `agent-vm` command that matches container's `start-work`
+experience with multi-VM support, filesystem sharing, and simple reconnection.
+
+**Architecture:** Use Terraform workspaces for multi-VM isolation, virtio-9p
+for filesystem sharing, sequential IP allocation within dynamic subnets, and
+per-VM SSH keys for security.
+
+**Tech Stack:** Bash, Terraform (libvirt provider), virsh, virtio-9p (9pfs),
+cloud-init
+
+---
+
+## Task 1: Add Terraform Variables for Filesystem Sharing
+
+**Files:**
+
+- Modify: `vm/variables.tf` (end of file)
+
+**Step 1: Add worktree_path variable**
+
+Add to `vm/variables.tf`:
+
+```hcl
+variable "worktree_path" {
+  description = "Path to host worktree directory to mount in VM"
+  type        = string
+  default     = ""
+}
+```
+
+**Step 2: Add main_repo_path variable**
+
+Add to `vm/variables.tf`:
+
+```hcl
+variable "main_repo_path" {
+  description = "Path to main git repository to mount in VM (for worktree commits)"
+  type        = string
+  default     = ""
+}
+```
+
+**Step 3: Add vm_ip variable**
+
+Add to `vm/variables.tf`:
+
+```hcl
+variable "vm_ip" {
+  description = "Static IP address for this VM (e.g., 192.168.123.10)"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.vm_ip == "" || can(regex("^192\\.168\\.\\d+\\.\\d+$", var.vm_ip))
+    error_message = "VM IP must be in format 192.168.X.Y or empty for DHCP."
+  }
+}
+```
+
+**Step 4: Run terraform validate**
+
+Run: `cd vm && terraform validate`
+
+Expected: Success (no errors)
+
+**Step 5: Commit**
+
+```bash
+git add vm/variables.tf
+git commit -m "feat(vm): add variables for filesystem sharing and static IP
+
+Add worktree_path, main_repo_path, and vm_ip variables to support
+multi-VM workflow with filesystem sharing."
+```
+
+---
+
+## Task 2: Update Terraform Network for Static IP
+
+**Files:**
+
+- Modify: `vm/main.tf` (libvirt_domain resource, network_interface block)
+
+**Step 1: Find network_interface block**
+
+Read `vm/main.tf` to locate the `network_interface` block in
+`libvirt_domain.agent_vm` resource (around line 150-160).
+
+**Step 2: Add static IP assignment**
+
+Replace the existing `network_interface` block with:
+
+```hcl
+  network_interface {
+    network_id     = libvirt_network.default.id
+    addresses      = var.vm_ip != "" ? [var.vm_ip] : null
+    wait_for_lease = true
+  }
+```
+
+**Step 3: Run terraform validate**
+
+Run: `cd vm && terraform validate`
+
+Expected: Success
+
+**Step 4: Commit**
+
+```bash
+git add vm/main.tf
+git commit -m "feat(vm): support static IP assignment via vm_ip variable
+
+Allow VMs to use static IP addresses when vm_ip variable is set,
+otherwise fall back to DHCP."
+```
+
+---
+
+## Task 3: Add Filesystem Mounts to Terraform
+
+**Files:**
+
+- Modify: `vm/main.tf` (libvirt_domain resource)
+
+**Step 1: Add worktree filesystem mount**
+
+Add to `libvirt_domain.agent_vm` resource (after `console` block, before
+closing brace):
+
+```hcl
+  # Mount host worktree directory (if provided)
+  dynamic "filesystem" {
+    for_each = var.worktree_path != "" ? [1] : []
+    content {
+      source     = var.worktree_path
+      target     = "worktree"
+      readonly   = false
+      accessmode = "mapped"
+    }
+  }
+```
+
+**Step 2: Add main repo filesystem mount**
+
+Add after worktree filesystem:
+
+```hcl
+  # Mount host main git repo (if provided)
+  dynamic "filesystem" {
+    for_each = var.main_repo_path != "" ? [1] : []
+    content {
+      source     = var.main_repo_path
+      target     = "mainrepo"
+      readonly   = false
+      accessmode = "mapped"
+    }
+  }
+```
+
+**Step 3: Run terraform fmt and validate**
+
+Run: `cd vm && terraform fmt && terraform validate`
+
+Expected: Success
+
+**Step 4: Commit**
+
+```bash
+git add vm/main.tf
+git commit -m "feat(vm): add 9pfs filesystem mounts for worktree and main repo
+
+Mount host worktree and main git repo using virtio-9p for real-time
+file sync between host and VM."
+```
+
+---
+
+## Task 4: Update Cloud-Init for Filesystem Mounts
+
+**Files:**
+
+- Modify: `vm/cloud-init.yaml.tftpl`
+
+**Step 1: Read current cloud-init template**
+
+Read `vm/cloud-init.yaml.tftpl` to understand the runcmd structure (around
+line 50-150).
+
+**Step 2: Add filesystem mount commands**
+
+Find the `runcmd:` section and add near the beginning (after group/user
+setup, before package installation):
+
+```yaml
+  # Mount shared filesystems if available
+  - mkdir -p /worktree /mainrepo
+  - |
+    if [ -d /sys/bus/virtio/drivers/9pnet_virtio ]; then
+      # Mount worktree if available
+      if grep -q worktree /proc/mounts 2>/dev/null || \
+         mount -t 9p -o trans=virtio,version=9p2000.L,rw,_netdev worktree /worktree 2>/dev/null; then
+        echo "worktree /worktree 9p trans=virtio,version=9p2000.L,rw,_netdev 0 0" >> /etc/fstab
+      fi
+      # Mount main repo if available
+      if grep -q mainrepo /proc/mounts 2>/dev/null || \
+         mount -t 9p -o trans=virtio,version=9p2000.L,rw,_netdev mainrepo /mainrepo 2>/dev/null; then
+        echo "mainrepo /mainrepo 9p trans=virtio,version=9p2000.L,rw,_netdev 0 0" >> /etc/fstab
+      fi
+    fi
+```
+
+**Step 3: Update default directory**
+
+Find the line that creates workspace directory (around line 150) and replace:
+
+```yaml
+  # Create workspace directory (fallback if no filesystem mount)
+  - mkdir -p /home/${default_user}/workspace
+  - chown -R ${user_uid}:${user_gid} /home/${default_user}/workspace
+  # Set /worktree as default if mounted, otherwise workspace
+  - |
+    if mountpoint -q /worktree; then
+      echo "cd /worktree" >> /home/${default_user}/.bashrc
+    else
+      echo "cd ~/workspace" >> /home/${default_user}/.bashrc
+    fi
+```
+
+**Step 4: Run terraform validate**
+
+Run: `cd vm && terraform validate`
+
+Expected: Success
+
+**Step 5: Commit**
+
+```bash
+git add vm/cloud-init.yaml.tftpl
+git commit -m "feat(vm): add 9pfs filesystem mounts in cloud-init
+
+Mount /worktree and /mainrepo using virtio-9p during cloud-init.
+Fallback to ~/workspace if no mounts available."
+```
+
+---
+
+## Task 5: Create Agent-VM Script Structure
+
+**Files:**
+
+- Create: `vm/agent-vm`
+
+**Step 1: Create script with shebang and usage function**
+
+Create `vm/agent-vm`:
+
+```bash
+#!/bin/bash
+
+set -e -o pipefail
+
+WORKTREE_BASE_DIR=~/src/worktrees
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+function usage {
+    cat - <<EOF
+agent-vm: Unified VM workflow for AI coding agents
+
+Usage: $0 [options] [-b <branch_name>] [-- command...]
+
+Options:
+  -b, --branch <name>         Branch name for git worktree
+  --memory <MB>               VM memory in MB (default: 4096, creation only)
+  --vcpu <count>              Virtual CPUs (default: 4, creation only)
+  --disk <size>               Disk size like 60G (default: 40G, creation only)
+  --list                      List all VMs and their status
+  --stop                      Stop VM (requires -b)
+  --destroy                   Destroy VM and workspace (requires -b)
+  --cleanup                   Destroy all stopped VMs
+  -h, --help                  Show this help
+
+Arguments:
+  command...                  Optional command to execute in VM
+                              (connection closes after execution)
+
+Examples:
+  $0 -b feature-auth                    # Create/connect to VM
+  $0 -b feature-auth -- claude          # Run claude directly
+  $0 -b big-build --memory 16384        # Create VM with 16GB RAM
+  $0 --list                             # List all VMs
+  $0 -b feature-auth --destroy          # Destroy VM
+
+Storage:
+  * Worktrees: $WORKTREE_BASE_DIR
+  * Terraform state: vm/.terraform/
+  * SSH keys: vm/.ssh/vm-ssh-key-<vm-name>
+
+Multi-VM:
+  * Each branch gets its own VM via Terraform workspaces
+  * Run same command again to reconnect (opens 2nd terminal)
+  * VMs persist after exit (not destroyed like containers)
+EOF
+}
+```
+
+**Step 2: Make executable**
+
+Run: `chmod +x vm/agent-vm`
+
+**Step 3: Test help output**
+
+Run: `vm/agent-vm --help`
+
+Expected: Usage message displayed
+
+**Step 4: Commit**
+
+```bash
+git add vm/agent-vm
+git commit -m "feat(vm): create agent-vm script skeleton with usage
+
+Add initial script structure and usage documentation."
+```
+
+---
+
+## Task 6: Add Argument Parsing to Agent-VM
+
+**Files:**
+
+- Modify: `vm/agent-vm`
+
+**Step 1: Add argument parsing after usage function**
+
+Add to `vm/agent-vm`:
+
+```bash
+# Parse command line options
+BRANCH_NAME=""
+VM_COMMAND=()
+USE_GIT=0
+MEMORY_OVERRIDE=""
+VCPU_OVERRIDE=""
+DISK_OVERRIDE=""
+ACTION=""  # list, stop, destroy, cleanup, or "" for connect
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -b|--branch)
+            BRANCH_NAME="$2"
+            shift 2
+            ;;
+        --memory)
+            MEMORY_OVERRIDE="$2"
+            shift 2
+            ;;
+        --vcpu)
+            VCPU_OVERRIDE="$2"
+            shift 2
+            ;;
+        --disk)
+            DISK_OVERRIDE="$2"
+            shift 2
+            ;;
+        --list)
+            ACTION="list"
+            shift
+            ;;
+        --stop)
+            ACTION="stop"
+            shift
+            ;;
+        --destroy)
+            ACTION="destroy"
+            shift
+            ;;
+        --cleanup)
+            ACTION="cleanup"
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            VM_COMMAND=("$@")
+            break
+            ;;
+        *)
+            echo "Error: Unknown option: $1" >&2
+            usage
+            exit 1
+            ;;
+    esac
+done
+```
+
+**Step 2: Run shellcheck**
+
+Run: `shellcheck vm/agent-vm`
+
+Expected: No errors (warnings OK for now)
+
+**Step 3: Commit**
+
+```bash
+git add vm/agent-vm
+git commit -m "feat(vm): add argument parsing for agent-vm
+
+Parse branch name, resource overrides, actions, and commands."
+```
+
+---
+
+## Task 7: Add Helper Functions to vm-common.sh
+
+**Files:**
+
+- Modify: `vm/vm-common.sh`
+
+**Step 1: Add workspace_exists function**
+
+Add to end of `vm/vm-common.sh`:
+
+```bash
+# Check if Terraform workspace exists
+# Args:
+#   $1 - Workspace name
+# Returns: 0 if exists, 1 if not
+workspace_exists() {
+  local workspace_name="$1"
+  terraform workspace list 2>/dev/null | grep -q "^[* ] *${workspace_name}$"
+}
+```
+
+**Step 2: Add vm_domain_exists function**
+
+Add to end of `vm/vm-common.sh`:
+
+```bash
+# Check if libvirt domain (VM) exists
+# Args:
+#   $1 - Domain name
+# Returns: 0 if exists, 1 if not
+vm_domain_exists() {
+  local domain_name="$1"
+  virsh list --all 2>/dev/null | tail -n +3 | awk '{print $2}' | grep -q "^${domain_name}$"
+}
+```
+
+**Step 3: Add vm_is_running function**
+
+Add to end of `vm/vm-common.sh`:
+
+```bash
+# Check if VM is running
+# Args:
+#   $1 - Domain name
+# Returns: 0 if running, 1 if not
+vm_is_running() {
+  local domain_name="$1"
+  virsh list --state-running 2>/dev/null | tail -n +3 | awk '{print $2}' | grep -q "^${domain_name}$"
+}
+```
+
+**Step 4: Add find_available_ip function**
+
+Add to end of `vm/vm-common.sh`:
+
+```bash
+# Find first available IP in subnet
+# Args:
+#   $1 - Script directory
+#   $2 - Subnet third octet (e.g., 123 for 192.168.123.0/24)
+# Returns: Available IP address
+# Exits: 1 if no IPs available
+find_available_ip() {
+  local script_dir="$1"
+  local subnet_third_octet="$2"
+  local base_ip="192.168.${subnet_third_octet}"
+  local start=10
+  local end=254
+
+  cd "$script_dir" || exit 1
+
+  # Get current workspace to restore later
+  local current_workspace
+  current_workspace=$(terraform workspace show 2>/dev/null || echo "default")
+
+  # Get all IPs currently in use from all workspaces
+  local used_ips
+  used_ips=$(terraform workspace list 2>/dev/null | grep -v default | sed 's/^[* ] *//' | \
+    while read -r ws; do
+      terraform workspace select "$ws" >/dev/null 2>&1
+      terraform output -raw vm_ip 2>/dev/null || true
+    done | sort -V)
+
+  # Restore original workspace
+  terraform workspace select "$current_workspace" >/dev/null 2>&1
+
+  # Find first gap in IP range
+  for ip_last_octet in $(seq $start $end); do
+    local candidate_ip="${base_ip}.${ip_last_octet}"
+    if ! echo "$used_ips" | grep -q "^${candidate_ip}$"; then
+      echo "$candidate_ip"
+      return 0
+    fi
+  done
+
+  # No IPs available
+  echo "Error: No available IPs in subnet ${base_ip}.0/24" >&2
+  echo "Run: agent-vm --cleanup to remove stopped VMs" >&2
+  exit 1
+}
+```
+
+**Step 5: Run shellcheck**
+
+Run: `shellcheck vm/vm-common.sh`
+
+Expected: No errors
+
+**Step 6: Commit**
+
+```bash
+git add vm/vm-common.sh
+git commit -m "feat(vm): add helper functions for multi-VM management
+
+Add functions to check workspace/domain existence, VM state, and
+find available IPs for sequential allocation."
+```
+
+---
+
+## Task 8: Implement VM Listing Functionality
+
+**Files:**
+
+- Modify: `vm/agent-vm`
+
+**Step 1: Source vm-common.sh**
+
+Add after argument parsing:
+
+```bash
+# Source common functions
+# shellcheck source=vm-common.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/vm-common.sh"
+
+cd "$SCRIPT_DIR" || exit 1
+```
+
+**Step 2: Add list_vms function**
+
+Add before argument parsing:
+
+```bash
+function list_vms {
+  echo "Listing all VMs managed by agent-vm..."
+  echo ""
+  printf "%-30s %-15s %-15s\n" "VM NAME" "STATUS" "IP ADDRESS"
+  printf "%-30s %-15s %-15s\n" "-------" "------" "----------"
+
+  # List all workspaces except default
+  terraform workspace list 2>/dev/null | grep -v default | sed 's/^[* ] *//' | \
+    while read -r ws; do
+      terraform workspace select "$ws" >/dev/null 2>&1
+
+      local vm_name="$ws"
+      local vm_ip
+      vm_ip=$(terraform output -raw vm_ip 2>/dev/null || echo "N/A")
+
+      local status="unknown"
+      if vm_domain_exists "$vm_name"; then
+        if vm_is_running "$vm_name"; then
+          status="running"
+        else
+          status="stopped"
+        fi
+      else
+        status="missing"
+      fi
+
+      printf "%-30s %-15s %-15s\n" "$vm_name" "$status" "$vm_ip"
+    done
+
+  # Return to default workspace
+  terraform workspace select default >/dev/null 2>&1
+  echo ""
+}
+```
+
+**Step 3: Handle --list action**
+
+Add after argument parsing:
+
+```bash
+# Handle list action
+if [[ "$ACTION" == "list" ]]; then
+  list_vms
+  exit 0
+fi
+```
+
+**Step 4: Test listing (manual)**
+
+Run: `cd vm && ./agent-vm --list`
+
+Expected: Shows header, no VMs yet (or existing ones if any)
+
+**Step 5: Commit**
+
+```bash
+git add vm/agent-vm
+git commit -m "feat(vm): implement --list to show all VMs
+
+Display all VMs with their status (running/stopped/missing) and IP."
+```
+
+---
+
+## Task 9: Implement VM Cleanup Functionality
+
+**Files:**
+
+- Modify: `vm/agent-vm`
+
+**Step 1: Add cleanup_stopped_vms function**
+
+Add before list_vms function:
+
+```bash
+function cleanup_stopped_vms {
+  echo "Cleaning up stopped VMs..."
+  local cleaned_count=0
+
+  # List all workspaces except default
+  terraform workspace list 2>/dev/null | grep -v default | sed 's/^[* ] *//' | \
+    while read -r ws; do
+      terraform workspace select "$ws" >/dev/null 2>&1
+
+      local vm_name="$ws"
+
+      # Check if VM exists and is stopped
+      if vm_domain_exists "$vm_name" && ! vm_is_running "$vm_name"; then
+        echo "Destroying stopped VM: $vm_name"
+        virsh destroy "$vm_name" 2>/dev/null || true
+        virsh undefine "$vm_name" 2>/dev/null || true
+
+        # Destroy Terraform resources
+        terraform destroy -auto-approve >/dev/null 2>&1
+
+        # Switch back and delete workspace
+        terraform workspace select default >/dev/null 2>&1
+        terraform workspace delete "$ws" 2>/dev/null
+
+        cleaned_count=$((cleaned_count + 1))
+      fi
+    done
+
+  # Return to default workspace
+  terraform workspace select default >/dev/null 2>&1
+
+  echo "Cleaned up $cleaned_count stopped VMs."
+}
+```
+
+**Step 2: Handle --cleanup action**
+
+Add after --list handler:
+
+```bash
+# Handle cleanup action
+if [[ "$ACTION" == "cleanup" ]]; then
+  cleanup_stopped_vms
+  exit 0
+fi
+```
+
+**Step 3: Test cleanup (manual)**
+
+Run: `cd vm && ./agent-vm --cleanup`
+
+Expected: Reports 0 VMs cleaned (or cleans stopped ones)
+
+**Step 4: Commit**
+
+```bash
+git add vm/agent-vm
+git commit -m "feat(vm): implement --cleanup to destroy stopped VMs
+
+Remove all stopped VMs and their Terraform workspaces."
+```
+
+---
+
+## Task 10: Implement VM Stop and Destroy
+
+**Files:**
+
+- Modify: `vm/agent-vm`
+
+**Step 1: Add validation for stop/destroy**
+
+Add after cleanup handler:
+
+```bash
+# Stop and destroy require branch name
+if [[ "$ACTION" == "stop" || "$ACTION" == "destroy" ]] && [[ -z "$BRANCH_NAME" ]]; then
+  echo "Error: --stop and --destroy require -b <branch_name>" >&2
+  exit 1
+fi
+```
+
+**Step 2: Add stop_vm function**
+
+Add before cleanup_stopped_vms:
+
+```bash
+function stop_vm {
+  local vm_name="$1"
+
+  if ! vm_domain_exists "$vm_name"; then
+    echo "Error: VM does not exist: $vm_name" >&2
+    exit 1
+  fi
+
+  if ! vm_is_running "$vm_name"; then
+    echo "VM is already stopped: $vm_name"
+    exit 0
+  fi
+
+  echo "Stopping VM: $vm_name"
+  virsh shutdown "$vm_name"
+  echo "VM stopped (graceful shutdown initiated)."
+}
+```
+
+**Step 3: Add destroy_vm function**
+
+Add before cleanup_stopped_vms:
+
+```bash
+function destroy_vm {
+  local vm_name="$1"
+  local workspace_name="$2"
+
+  echo "Destroying VM: $vm_name"
+
+  # Stop and destroy domain if exists
+  if vm_domain_exists "$vm_name"; then
+    virsh destroy "$vm_name" 2>/dev/null || true
+    virsh undefine "$vm_name" 2>/dev/null || true
+  fi
+
+  # Switch to workspace and destroy Terraform resources
+  if workspace_exists "$workspace_name"; then
+    terraform workspace select "$workspace_name" >/dev/null 2>&1
+    terraform destroy -auto-approve
+
+    # Delete workspace
+    terraform workspace select default >/dev/null 2>&1
+    terraform workspace delete "$workspace_name"
+  fi
+
+  echo "VM destroyed: $vm_name"
+}
+```
+
+**Step 4: Handle stop/destroy actions**
+
+Add after validation:
+
+```bash
+# Determine VM naming (needed for stop/destroy)
+if [[ -n "$BRANCH_NAME" ]] && [[ -d .git ]]; then
+  REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
+  VM_NAME="${REPO_NAME}-${BRANCH_NAME}"
+else
+  echo "Error: Must be in a git repository to use -b option" >&2
+  exit 1
+fi
+
+# Handle stop action
+if [[ "$ACTION" == "stop" ]]; then
+  stop_vm "$VM_NAME"
+  exit 0
+fi
+
+# Handle destroy action
+if [[ "$ACTION" == "destroy" ]]; then
+  destroy_vm "$VM_NAME" "$VM_NAME"
+  exit 0
+fi
+```
+
+**Step 5: Commit**
+
+```bash
+git add vm/agent-vm
+git commit -m "feat(vm): implement --stop and --destroy actions
+
+Add ability to gracefully stop or completely destroy VMs."
+```
+
+---
+
+## Task 11: Implement Worktree Setup
+
+**Files:**
+
+- Modify: `vm/agent-vm`
+
+**Step 1: Add setup_worktree function**
+
+Add after destroy_vm function:
+
+```bash
+function setup_worktree {
+  local worktree_dir="$1"
+  local branch_name="$2"
+
+  if [[ -d "$worktree_dir" ]]; then
+    echo "Worktree for branch '$branch_name' already exists at $worktree_dir."
+    return 0
+  fi
+
+  # Check if branch exists
+  if git show-ref --verify --quiet "refs/heads/$branch_name"; then
+    echo "Adding worktree for existing branch '$branch_name'..."
+    git worktree add "$worktree_dir" "$branch_name"
+  else
+    echo "Creating branch '$branch_name' from current HEAD and adding worktree..."
+    git worktree add -b "$branch_name" "$worktree_dir"
+  fi
+}
+```
+
+**Step 2: Add worktree setup logic**
+
+Add after action handlers, before end of script:
+
+```bash
+# Determine if we should use git worktrees
+if [[ -n "$BRANCH_NAME" ]]; then
+  if [[ ! -d .git ]]; then
+    echo "Error: Must be in a git repository to use -b option" >&2
+    exit 1
+  fi
+
+  USE_GIT=1
+  REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
+  WORKTREE_DIR="$WORKTREE_BASE_DIR/${REPO_NAME}-${BRANCH_NAME}"
+  VM_NAME="${REPO_NAME}-${BRANCH_NAME}"
+
+  # Create worktree base directory if needed
+  mkdir -p "$WORKTREE_BASE_DIR"
+
+  # Setup worktree
+  setup_worktree "$WORKTREE_DIR" "$BRANCH_NAME"
+
+  # Get main repo directory for git operations
+  MAIN_REPO_DIR="$(git rev-parse --show-toplevel)"
+else
+  echo "Error: -b <branch> is required" >&2
+  exit 1
+fi
+```
+
+**Step 3: Commit**
+
+```bash
+git add vm/agent-vm
+git commit -m "feat(vm): implement worktree setup logic
+
+Create or reuse git worktrees for branch-based VM workflow."
+```
+
+---
+
+## Task 12: Implement Subnet Detection
+
+**Files:**
+
+- Modify: `vm/agent-vm`
+
+**Step 1: Add subnet detection logic**
+
+Add after worktree setup:
+
+```bash
+# Detect network subnet (same logic as vm-up.sh)
+if [ -z "$NETWORK_SUBNET" ]; then
+  # Get the current VM's IP address (if any) on 192.168.x.x
+  CURRENT_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)192\.168\.\d+\.\d+(?=/)' | head -1)
+
+  if [ -n "$CURRENT_IP" ]; then
+    # Extract third octet from current IP
+    CURRENT_THIRD_OCTET=$(echo "$CURRENT_IP" | cut -d. -f3)
+
+    # Use different subnet: if we're on 122 or 123, use 200
+    # Otherwise use current + 1 (wrapping at 255)
+    if [ "$CURRENT_THIRD_OCTET" -eq 122 ] || [ "$CURRENT_THIRD_OCTET" -eq 123 ]; then
+      NETWORK_SUBNET=200
+      echo "Detected outer VM network: 192.168.$CURRENT_THIRD_OCTET.0/24"
+      echo "Using subnet 192.168.$NETWORK_SUBNET.0/24 for nested VM"
+    else
+      NETWORK_SUBNET=$(( (CURRENT_THIRD_OCTET + 1) % 256 ))
+      echo "Detected outer VM network: 192.168.$CURRENT_THIRD_OCTET.0/24"
+      echo "Using subnet 192.168.$NETWORK_SUBNET.0/24 for nested VM"
+    fi
+  else
+    # Not inside a VM on 192.168.x.x, use default
+    NETWORK_SUBNET=123
+  fi
+fi
+```
+
+**Step 2: Commit**
+
+```bash
+git add vm/agent-vm
+git commit -m "feat(vm): add subnet detection for nested VMs
+
+Detect outer VM network and choose non-conflicting subnet."
+```
+
+---
+
+## Task 13: Implement VM Creation Logic
+
+**Files:**
+
+- Modify: `vm/agent-vm`
+
+**Step 1: Add resource override warning function**
+
+Add after setup_worktree:
+
+```bash
+function warn_resource_overrides_ignored {
+  if [[ -n "$MEMORY_OVERRIDE" || -n "$VCPU_OVERRIDE" || -n "$DISK_OVERRIDE" ]]; then
+    echo "WARNING: VM already exists. Resource options ignored."
+    echo "To apply new resources, destroy and recreate:"
+    echo "  agent-vm -b $BRANCH_NAME --destroy"
+    if [[ -n "$MEMORY_OVERRIDE" ]]; then
+      echo "  agent-vm -b $BRANCH_NAME --memory $MEMORY_OVERRIDE"
+    fi
+    if [[ -n "$VCPU_OVERRIDE" ]]; then
+      echo "  agent-vm -b $BRANCH_NAME --vcpu $VCPU_OVERRIDE"
+    fi
+    if [[ -n "$DISK_OVERRIDE" ]]; then
+      echo "  agent-vm -b $BRANCH_NAME --disk $DISK_OVERRIDE"
+    fi
+    echo ""
+  fi
+}
+```
+
+**Step 2: Add VM creation logic**
+
+Add after subnet detection:
+
+```bash
+# Check if workspace exists
+if workspace_exists "$VM_NAME"; then
+  echo "VM workspace exists: $VM_NAME"
+
+  # Select workspace
+  terraform workspace select "$VM_NAME"
+
+  # Check if VM domain exists
+  if vm_domain_exists "$VM_NAME"; then
+    if vm_is_running "$VM_NAME"; then
+      echo "VM is already running: $VM_NAME"
+      warn_resource_overrides_ignored
+    else
+      echo "VM exists but is stopped. Starting..."
+      warn_resource_overrides_ignored
+      virsh start "$VM_NAME"
+      echo "VM started: $VM_NAME"
+    fi
+  else
+    echo "Warning: Workspace exists but VM domain missing. Recreating..."
+    # Workspace exists but VM doesn't - clean up and recreate
+    terraform workspace select default
+    terraform workspace delete "$VM_NAME"
+
+    # Fall through to creation below
+    CREATE_NEW_VM=1
+  fi
+else
+  CREATE_NEW_VM=1
+fi
+
+# Create new VM if needed
+if [[ "${CREATE_NEW_VM:-0}" == "1" ]]; then
+  echo "Creating new VM: $VM_NAME"
+
+  # Create workspace
+  terraform workspace new "$VM_NAME"
+
+  # Find available IP
+  VM_IP=$(find_available_ip "$SCRIPT_DIR" "$NETWORK_SUBNET")
+  echo "Allocated IP: $VM_IP"
+
+  # Build terraform variables
+  TERRAFORM_VARS=(
+    -var="vm_name=$VM_NAME"
+    -var="vm_hostname=$VM_NAME"
+    -var="worktree_path=$WORKTREE_DIR"
+    -var="main_repo_path=$MAIN_REPO_DIR"
+    -var="vm_ip=$VM_IP"
+    -var="network_subnet_third_octet=$NETWORK_SUBNET"
+    -var="user_uid=$(id -u)"
+    -var="user_gid=$(id -g)"
+  )
+
+  # Add resource overrides if provided
+  if [[ -n "$MEMORY_OVERRIDE" ]]; then
+    TERRAFORM_VARS+=(-var="vm_memory=$MEMORY_OVERRIDE")
+  fi
+  if [[ -n "$VCPU_OVERRIDE" ]]; then
+    TERRAFORM_VARS+=(-var="vm_vcpu=$VCPU_OVERRIDE")
+  fi
+  if [[ -n "$DISK_OVERRIDE" ]]; then
+    # Convert disk size to bytes (e.g., 60G -> 64424509440)
+    DISK_BYTES=$(numfmt --from=iec "${DISK_OVERRIDE}")
+    TERRAFORM_VARS+=(-var="vm_disk_size=$DISK_BYTES")
+  fi
+
+  # Add GCP credentials if available
+  GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
+  if [[ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then
+    GCP_CREDS_PATH="$GOOGLE_APPLICATION_CREDENTIALS"
+  else
+    GCP_CREDS_PATH="$GCP_CREDS_DEFAULT"
+  fi
+
+  if [[ -f "$GCP_CREDS_PATH" ]]; then
+    echo "Injecting GCP credentials from: $GCP_CREDS_PATH"
+    TERRAFORM_VARS+=(-var="gcp_service_account_key_path=$GCP_CREDS_PATH")
+
+    if [[ -n "$ANTHROPIC_VERTEX_PROJECT_ID" ]]; then
+      TERRAFORM_VARS+=(-var="vertex_project_id=$ANTHROPIC_VERTEX_PROJECT_ID")
+    fi
+
+    if [[ -n "$CLOUD_ML_REGION" ]]; then
+      TERRAFORM_VARS+=(-var="vertex_region=$CLOUD_ML_REGION")
+    fi
+  fi
+
+  # Initialize terraform if needed
+  if [[ ! -d ".terraform" ]] || [[ ! -f ".terraform.lock.hcl" ]]; then
+    echo "Initializing Terraform..."
+    terraform init
+  fi
+
+  # Apply terraform
+  echo "Provisioning VM with Terraform..."
+  terraform apply -auto-approve "${TERRAFORM_VARS[@]}"
+
+  # Remove old SSH key from known_hosts
+  ssh-keygen -R "$VM_IP" 2>/dev/null || true
+
+  echo "VM created successfully: $VM_NAME"
+fi
+```
+
+**Step 3: Commit**
+
+```bash
+git add vm/agent-vm
+git commit -m "feat(vm): implement VM creation and startup logic
+
+Create new VMs via Terraform workspaces, or start/reuse existing ones.
+Handle resource overrides with safety warnings."
+```
+
+---
+
+## Task 14: Implement SSH Connection
+
+**Files:**
+
+- Modify: `vm/agent-vm`
+
+**Step 1: Add SSH connection logic**
+
+Add at end of script:
+
+```bash
+# Get VM IP and user
+VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
+VM_USER=$(terraform output -raw default_user 2>/dev/null)
+SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
+
+# Wait for VM to be ready
+echo "Waiting for VM to be ready..."
+MAX_WAIT=300
+ELAPSED=0
+while ! ssh -i "$SSH_KEY" -o ConnectTimeout=5 -o BatchMode=yes \
+     -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null; do
+  sleep 5
+  ELAPSED=$((ELAPSED + 5))
+  if [[ $ELAPSED -ge $MAX_WAIT ]]; then
+    echo "ERROR: VM failed to start within 5 minutes" >&2
+    echo "Check cloud-init logs:"
+    echo "  ssh -i $SSH_KEY root@$VM_IP 'tail -100 /var/log/cloud-init-output.log'"
+    exit 1
+  fi
+done
+
+# Verify filesystem mounts
+echo "Verifying filesystem mounts..."
+if ! ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+     "mountpoint -q /worktree && mountpoint -q /mainrepo" 2>/dev/null; then
+  echo "WARNING: Filesystem mounts may not be available"
+  echo "Check with: virsh dumpxml $VM_NAME | grep filesystem"
+fi
+
+# Connect to VM
+echo "Connecting to VM: $VM_NAME (IP: $VM_IP)"
+echo ""
+
+if [[ ${#VM_COMMAND[@]} -gt 0 ]]; then
+  # Execute command and exit
+  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+    "cd /worktree 2>/dev/null || cd ~; ${VM_COMMAND[*]}"
+else
+  # Interactive session
+  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+    -t "cd /worktree 2>/dev/null || cd ~; exec bash -l"
+fi
+```
+
+**Step 2: Test basic connection (manual if you have KVM setup)**
+
+Run: `cd vm && ./agent-vm -b test-feature` (requires KVM/libvirt)
+
+Expected: Creates VM and connects (or appropriate error if no KVM)
+
+**Step 3: Commit**
+
+```bash
+git add vm/agent-vm
+git commit -m "feat(vm): implement SSH connection with mount verification
+
+Connect to VM after creation/startup, verify filesystem mounts,
+support both interactive and command execution modes."
+```
+
+---
+
+## Task 15: Update Integration Tests
+
+**Files:**
+
+- Modify: `test-integration.sh`
+
+**Step 1: Read current test structure**
+
+Read `test-integration.sh` to find the VM test section (around line 200-300).
+
+**Step 2: Replace VM test with multi-VM test**
+
+Find the `test_vm()` function and replace it with:
+
+```bash
+test_vm() {
+  echo "Testing VM approach with multi-instance support..."
+
+  cd vm/ || exit 1
+
+  # Test 1: Create first VM
+  echo "Test: Creating first VM"
+  ./agent-vm -b test-branch-1 -- echo "VM 1 ready"
+  if [ $? -ne 0 ]; then
+    echo "FAIL: Could not create first VM"
+    return 1
+  fi
+
+  # Test 2: Create second VM (parallel)
+  echo "Test: Creating second VM in parallel"
+  ./agent-vm -b test-branch-2 -- echo "VM 2 ready"
+  if [ $? -ne 0 ]; then
+    echo "FAIL: Could not create second VM"
+    ./agent-vm -b test-branch-1 --destroy
+    return 1
+  fi
+
+  # Test 3: Verify both running
+  echo "Test: Verifying both VMs are running"
+  if ! virsh list --state-running 2>/dev/null | grep -q "test-branch-1"; then
+    echo "FAIL: First VM not running"
+    ./agent-vm -b test-branch-1 --destroy
+    ./agent-vm -b test-branch-2 --destroy
+    return 1
+  fi
+
+  if ! virsh list --state-running 2>/dev/null | grep -q "test-branch-2"; then
+    echo "FAIL: Second VM not running"
+    ./agent-vm -b test-branch-1 --destroy
+    ./agent-vm -b test-branch-2 --destroy
+    return 1
+  fi
+
+  # Test 4: Verify filesystem mounts
+  echo "Test: Verifying filesystem mounts"
+  if ! ./agent-vm -b test-branch-1 -- mountpoint -q /worktree; then
+    echo "FAIL: Worktree not mounted in first VM"
+    ./agent-vm -b test-branch-1 --destroy
+    ./agent-vm -b test-branch-2 --destroy
+    return 1
+  fi
+
+  # Test 5: Test reconnection
+  echo "Test: Reconnecting to first VM"
+  if ! ./agent-vm -b test-branch-1 -- echo "Reconnected"; then
+    echo "FAIL: Could not reconnect to first VM"
+    ./agent-vm -b test-branch-1 --destroy
+    ./agent-vm -b test-branch-2 --destroy
+    return 1
+  fi
+
+  # Test 6: Verify list command
+  echo "Test: Listing VMs"
+  if ! ./agent-vm --list | grep -q "test-branch-1"; then
+    echo "FAIL: List command did not show first VM"
+    ./agent-vm -b test-branch-1 --destroy
+    ./agent-vm -b test-branch-2 --destroy
+    return 1
+  fi
+
+  # Cleanup
+  echo "Cleaning up test VMs..."
+  ./agent-vm -b test-branch-1 --destroy
+  ./agent-vm -b test-branch-2 --destroy
+
+  cd ..
+  echo "VM tests PASSED"
+  return 0
+}
+```
+
+**Step 3: Run integration test**
+
+Run: `./test-integration.sh --vm` (requires KVM/libvirt)
+
+Expected: All tests pass (or skip if no KVM)
+
+**Step 4: Commit**
+
+```bash
+git add test-integration.sh
+git commit -m "test(vm): update integration tests for multi-VM workflow
+
+Test VM creation, parallel VMs, reconnection, filesystem mounts,
+and cleanup."
+```
+
+---
+
+## Task 16: Remove Old VM Scripts
+
+**Files:**
+
+- Delete: `vm/vm-up.sh`
+- Delete: `vm/vm-connect.sh`
+- Delete: `vm/vm-git-push`
+- Delete: `vm/vm-git-fetch`
+- Delete: `vm/vm-dir-push`
+- Delete: `vm/vm-dir-pull`
+
+**Step 1: Remove old scripts**
+
+Run:
+
+```bash
+git rm vm/vm-up.sh vm/vm-connect.sh vm/vm-git-push vm/vm-git-fetch \
+       vm/vm-dir-push vm/vm-dir-pull
+```
+
+**Step 2: Verify vm-common.sh is kept**
+
+Run: `ls vm/vm-common.sh`
+
+Expected: File exists (we still need it for helper functions)
+
+**Step 3: Commit**
+
+```bash
+git commit -m "refactor(vm): remove old VM scripts replaced by agent-vm
+
+Remove vm-up.sh, vm-connect.sh, and vm-git-* scripts.
+All functionality now unified in agent-vm command."
+```
+
+---
+
+## Task 17: Update VM README Documentation
+
+**Files:**
+
+- Modify: `vm/README.md`
+
+**Step 1: Read current README**
+
+Read `vm/README.md` to understand structure.
+
+**Step 2: Replace usage section with agent-vm**
+
+Replace the "Getting Started" and "Usage" sections with:
+
+```markdown
+## Getting Started
+
+### Prerequisites
+
+- Linux host with KVM support
+- Terraform >= 1.0
+- libvirt/virsh installed
+- Git repository
+
+### Quick Start
+
+```bash
+# Create VM and connect
+cd vm/
+./agent-vm -b feature-auth
+
+# Inside VM
+claude  # Start Claude Code
+```
+
+The VM persists after exit. Reconnect anytime with the same command.
+
+## Usage
+
+### Basic Workflow
+
+```bash
+# Create/connect to VM for a branch
+./agent-vm -b feature-name
+
+# Run command in VM
+./agent-vm -b feature-name -- claude
+
+# Create VM with custom resources
+./agent-vm -b big-build --memory 16384 --vcpu 8
+```
+
+### Managing VMs
+
+```bash
+# List all VMs
+./agent-vm --list
+
+# Stop VM (keeps workspace)
+./agent-vm -b feature-name --stop
+
+# Destroy VM completely
+./agent-vm -b feature-name --destroy
+
+# Clean up all stopped VMs
+./agent-vm --cleanup
+```
+
+### Multi-VM Workflow
+
+```bash
+# Terminal 1
+./agent-vm -b feature-auth
+
+# Terminal 2 (parallel work)
+./agent-vm -b feature-payments
+
+# Terminal 3 (reconnect to first VM)
+./agent-vm -b feature-auth
+```
+
+Each branch gets its own VM, worktree, and IP address.
+
+### Filesystem Sharing
+
+Files are shared between host and VM via virtio-9p:
+
+- `/worktree` - Your branch's worktree (edit on host, build in VM)
+- `/mainrepo` - Main git repository (for commits)
+
+Changes on host appear immediately in VM and vice versa.
+```
+
+**Step 3: Run pre-commit on README**
+
+Run: `pre-commit run --files vm/README.md`
+
+Expected: May need markdown formatting fixes - apply them
+
+**Step 4: Commit**
+
+```bash
+git add vm/README.md
+git commit -m "docs(vm): update README for agent-vm workflow
+
+Replace old vm-up/vm-connect docs with agent-vm usage and
+multi-VM workflow examples."
+```
+
+---
+
+## Task 18: Update VM CLAUDE.md Documentation
+
+**Files:**
+
+- Modify: `vm/CLAUDE.md`
+
+**Step 1: Replace Development Workflow section**
+
+Replace the "Development Workflow" section with:
+
+```markdown
+## Development Workflow
+
+### Using agent-vm
+
+The unified `agent-vm` command handles all VM operations:
+
+```bash
+# Create/connect to VM
+./agent-vm -b feature-name
+
+# Create with custom resources (creation-time only)
+./agent-vm -b big-build --memory 16384 --vcpu 8
+
+# List all VMs
+./agent-vm --list
+
+# Stop/destroy VMs
+./agent-vm -b feature-name --stop
+./agent-vm -b feature-name --destroy
+```
+
+### Multi-VM Support
+
+Each branch gets its own VM via Terraform workspaces:
+
+- Worktree: `~/src/worktrees/<repo>-<branch>/`
+- VM name: `<repo>-<branch>`
+- Isolated IP, SSH key, and state
+
+### Filesystem Sharing
+
+Host files are mounted in VM using virtio-9p:
+
+- `/worktree` - Branch worktree (editable on host)
+- `/mainrepo` - Main git repo (for commits)
+
+Edit files on host with your IDE, run builds/tests in VM.
+
+### Task Management
+
+Use TodoWrite tool for complex tasks to track progress.
+
+### Pre-commit Quality Checks
+
+Run pre-commit after making changes:
+
+```bash
+pre-commit run --files <filename>
+```
+```
+
+**Step 2: Update Testing VM Changes section**
+
+Replace "Testing VM Changes" with:
+
+```markdown
+### Testing VM Changes
+
+After modifying Terraform or cloud-init:
+
+1. **Validate Terraform**:
+
+   ```bash
+   cd /home/user/workspace/vm
+   terraform fmt
+   terraform validate
+   ```
+
+2. **Test with new VM**:
+
+   ```bash
+   ./agent-vm -b test-changes
+   # Verify everything works
+   ./agent-vm -b test-changes --destroy
+   ```
+
+3. **Run integration tests**:
+
+   ```bash
+   cd ..
+   ./test-integration.sh --vm
+   ```
+```
+
+**Step 3: Run pre-commit**
+
+Run: `pre-commit run --files vm/CLAUDE.md`
+
+Expected: May need formatting fixes
+
+**Step 4: Commit**
+
+```bash
+git add vm/CLAUDE.md
+git commit -m "docs(vm): update CLAUDE.md for agent-vm workflow
+
+Update development workflow, multi-VM support, and testing
+sections for unified agent-vm command."
+```
+
+---
+
+## Task 19: Update Root CLAUDE.md
+
+**Files:**
+
+- Modify: `CLAUDE.md`
+
+**Step 1: Update VM approach description**
+
+Find the "Determining Which Approach You're Working With" section and update
+VM bullet:
+
+```markdown
+- If in `/path/to/repo/vm` → Use VM approach (`agent-vm` command)
+```
+
+**Step 2: Add note about unified workflow**
+
+Update "Project Overview" section to mention similarity:
+
+```markdown
+## Project Overview
+
+This repository provides **two approaches** for creating isolated AI
+development environments:
+
+1. **Container** - Docker-based, `start-work` command, fast startup
+2. **VM** - Libvirt/KVM-based, `agent-vm` command (similar workflow)
+
+Both approaches support worktrees, filesystem sharing, and multi-instance
+operation.
+```
+
+**Step 3: Run pre-commit**
+
+Run: `pre-commit run --files CLAUDE.md`
+
+Expected: Pass or apply formatting fixes
+
+**Step 4: Commit**
+
+```bash
+git add CLAUDE.md
+git commit -m "docs: update root CLAUDE.md for unified VM workflow
+
+Mention agent-vm command and similarity to container workflow."
+```
+
+---
+
+## Task 20: Final Integration Test
+
+**Files:**
+
+- None (testing only)
+
+**Step 1: Run full integration test suite**
+
+Run: `./test-integration.sh --all`
+
+Expected: All tests pass (container and VM)
+
+**Step 2: Manual smoke test - Create VM**
+
+Run:
+
+```bash
+cd vm/
+./agent-vm -b smoke-test
+```
+
+Inside VM:
+
+```bash
+ls /worktree  # Should show repo files
+ls /mainrepo  # Should show main repo
+pwd           # Should be /worktree
+exit
+```
+
+**Step 3: Manual smoke test - Reconnect**
+
+Run: `./agent-vm -b smoke-test`
+
+Expected: Reconnects immediately (VM already running)
+
+**Step 4: Manual smoke test - Cleanup**
+
+Run: `./agent-vm -b smoke-test --destroy`
+
+Expected: VM destroyed, workspace removed
+
+**Step 5: Create final commit**
+
+```bash
+git add -A
+git commit -m "feat(vm): unified VM workflow complete
+
+Unified VM workflow now matches container experience:
+- Single agent-vm command for all operations
+- Multi-VM support via Terraform workspaces
+- Filesystem sharing via virtio-9p
+- Sequential IP allocation
+- Simple reconnection
+
+All integration tests passing."
+```
+
+---
+
+## Completion Checklist
+
+After all tasks complete, verify:
+
+- [ ] `agent-vm` script exists and is executable
+- [ ] `agent-vm --help` shows usage
+- [ ] `agent-vm --list` works (shows no VMs or existing ones)
+- [ ] Terraform validates: `cd vm && terraform validate`
+- [ ] Shellcheck passes: `shellcheck vm/agent-vm vm/vm-common.sh`
+- [ ] Integration tests pass: `./test-integration.sh --vm`
+- [ ] Old scripts removed (vm-up.sh, vm-connect.sh, etc.)
+- [ ] Documentation updated (README.md, CLAUDE.md)
+- [ ] All commits follow conventional commit format
+
+## Manual Testing Guide
+
+If you have KVM/libvirt available:
+
+1. Create VM: `cd vm && ./agent-vm -b test-feature`
+2. Verify mounts: Inside VM run `mount | grep 9p`
+3. Test file sync: On host `touch ~/src/worktrees/*/test.txt`, verify in VM
+4. Test git: Inside VM `git status` should work
+5. Test reconnect: Open 2nd terminal, run same command
+6. List VMs: `./agent-vm --list`
+7. Cleanup: `./agent-vm -b test-feature --destroy`
+
+## Notes
+
+- Filesystem sharing requires 9pfs support in kernel (standard in modern Linux)
+- VMs persist after exit (unlike containers)
+- Resource overrides only apply at creation time (safety feature)
+- Sequential IP allocation prevents collisions
+- Nested VM support via subnet detection

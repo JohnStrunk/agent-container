@@ -1,7 +1,7 @@
 variable "vm_name" {
   description = "Name of the virtual machine"
   type        = string
-  default     = "debian-trixie-vm"
+  default     = "agent-vm"
 }
 
 variable "vm_memory" {
@@ -25,7 +25,7 @@ variable "vm_disk_size" {
 variable "vm_hostname" {
   description = "Hostname for the VM"
   type        = string
-  default     = "debian-trixie"
+  default     = "agent-vm"
 }
 
 variable "default_user" {
