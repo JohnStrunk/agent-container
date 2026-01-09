@@ -50,7 +50,7 @@ function push_branch_to_vm {
   # Check if branch exists locally, create if not
   if ! git show-ref --verify --quiet "refs/heads/$branch_name"; then
     echo "Creating branch '$branch_name' from current HEAD..."
-    git checkout -b "$branch_name"
+    git branch "$branch_name"
   fi
 
   # Set up SSH key for git
