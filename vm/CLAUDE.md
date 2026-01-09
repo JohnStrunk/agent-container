@@ -98,6 +98,9 @@ Use TodoWrite tool for complex tasks to track progress.
 
 ### Pre-commit Quality Checks
 
+Pre-commit hooks are automatically installed when creating a new workspace
+(if `.pre-commit-config.yaml` is present in the repository).
+
 Run pre-commit after making changes:
 
 ```bash
