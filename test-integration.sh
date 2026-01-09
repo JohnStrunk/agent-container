@@ -335,20 +335,79 @@ test_vm_approach() {
 
     cd vm/ || exit "$EXIT_PREREQ_FAILED"
 
+    # Save repo root and current branch to restore later
+    local repo_root
+    repo_root="$(cd .. && pwd)"
+    local original_branch
+    original_branch=$(git -C "$repo_root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    local original_dir
+    original_dir="$(pwd)"
+    log "Saved original branch: ${original_branch:-<detached HEAD>}"
+    log "Repo root: $repo_root"
+
+    # Generate unique branch names to avoid conflicts
+    local timestamp
+    timestamp=$(date +%s)
+    local test_branch_1="test-vm-integration-${timestamp}-1"
+    local test_branch_2="test-vm-integration-${timestamp}-2"
+    log "Using temporary branches: $test_branch_1, $test_branch_2"
+
+    # Cleanup function for temporary branches
+    # shellcheck disable=SC2317
+    cleanup_test_branches() {
+        local exit_code=$?
+
+        log "Cleaning up temporary test branches..."
+
+        # Change to repo root using absolute path
+        cd "$repo_root" || {
+            log_error "Failed to cd to repo root: $repo_root"
+            return "$exit_code"
+        }
+
+        # Restore original branch first (so we can delete test branches)
+        if [[ -n "$original_branch" ]]; then
+            current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+            if [[ "$current_branch" != "$original_branch" ]]; then
+                log "Restoring original branch: $original_branch"
+                git checkout "$original_branch" 2>/dev/null || log_error "Failed to restore original branch"
+            fi
+        fi
+
+        # Delete test branches if they exist (must be done after checkout to avoid "cannot delete checked out branch" error)
+        if git show-ref --verify --quiet "refs/heads/$test_branch_1"; then
+            log "Deleting branch: $test_branch_1"
+            git branch -D "$test_branch_1" 2>/dev/null || true
+        fi
+
+        if git show-ref --verify --quiet "refs/heads/$test_branch_2"; then
+            log "Deleting branch: $test_branch_2"
+            git branch -D "$test_branch_2" 2>/dev/null || true
+        fi
+
+        # Return to original directory
+        cd "$original_dir" || log_error "Failed to restore directory: $original_dir"
+
+        return "$exit_code"
+    }
+
+    # Set trap to cleanup branches on exit
+    trap cleanup_test_branches RETURN
+
     # Cleanup any existing test artifacts
     log "Cleaning up any existing test VMs..."
     ./agent-vm --destroy 2>/dev/null || true
 
     # Test 1: Create VM and first workspace
     log "Test 1: Creating VM with first workspace..."
-    if ! ./agent-vm -b test-vm-1 -- echo "VM test 1 successful"; then
+    if ! ./agent-vm -b "$test_branch_1" -- echo "VM test 1 successful"; then
         log_error "Failed to create VM and workspace"
         return "$EXIT_TEST_FAILED"
     fi
 
     # Test 2: Create second workspace (same VM)
     log "Test 2: Creating second workspace in same VM..."
-    if ! ./agent-vm -b test-vm-2 -- echo "VM test 2 successful"; then
+    if ! ./agent-vm -b "$test_branch_2" -- echo "VM test 2 successful"; then
         log_error "Failed to create second workspace"
         return "$EXIT_TEST_FAILED"
     fi
@@ -357,7 +416,7 @@ test_vm_approach() {
     log "Test 3: Testing Claude Code in VM..."
     # Write test script to temp file in VM and execute it with bash -l (login shell to load profile.d)
     test_script=$(generate_test_command)
-    if ! ./agent-vm -b test-vm-1 -- bash -l -c "cat > /tmp/test-claude.sh << 'TESTEOF'
+    if ! ./agent-vm -b "$test_branch_1" -- bash -l -c "cat > /tmp/test-claude.sh << 'TESTEOF'
 $test_script
 TESTEOF
 chmod +x /tmp/test-claude.sh
@@ -369,12 +428,12 @@ chmod +x /tmp/test-claude.sh
     # Test 4: List workspaces
     log "Test 4: Listing workspaces..."
     list_output=$(./agent-vm --list 2>&1)
-    if ! echo "$list_output" | grep -q "test-vm-1"; then
-        log_error "Workspace test-vm-1 not found in list"
+    if ! echo "$list_output" | grep -q "$test_branch_1"; then
+        log_error "Workspace $test_branch_1 not found in list"
         return "$EXIT_TEST_FAILED"
     fi
-    if ! echo "$list_output" | grep -q "test-vm-2"; then
-        log_error "Workspace test-vm-2 not found in list"
+    if ! echo "$list_output" | grep -q "$test_branch_2"; then
+        log_error "Workspace $test_branch_2 not found in list"
         return "$EXIT_TEST_FAILED"
     fi
 
@@ -399,21 +458,21 @@ chmod +x /tmp/test-claude.sh
 
     # Test 6: Reconnect to existing workspace
     log "Test 6: Reconnecting to existing workspace..."
-    if ! ./agent-vm -b test-vm-1 -- echo "Reconnect successful"; then
+    if ! ./agent-vm -b "$test_branch_1" -- echo "Reconnect successful"; then
         log_error "Failed to reconnect to workspace"
         return "$EXIT_TEST_FAILED"
     fi
 
     # Test 7: Clean specific workspace
     log "Test 7: Cleaning specific workspace..."
-    if ! echo "y" | ./agent-vm -b test-vm-1 --clean; then
+    if ! echo "y" | ./agent-vm -b "$test_branch_1" --clean; then
         log_error "Failed to clean workspace"
         return "$EXIT_TEST_FAILED"
     fi
 
     # Verify workspace is gone
-    if ./agent-vm --list | grep -q "test-vm-1"; then
-        log_error "Workspace test-vm-1 still exists after clean"
+    if ./agent-vm --list | grep -q "$test_branch_1"; then
+        log_error "Workspace $test_branch_1 still exists after clean"
         return "$EXIT_TEST_FAILED"
     fi
 
@@ -424,8 +483,8 @@ chmod +x /tmp/test-claude.sh
         return "$EXIT_TEST_FAILED"
     fi
 
-    # Test 8: Destroy VM
-    log "Test 8: Destroying VM..."
+    # Test 9: Destroy VM
+    log "Test 9: Destroying VM..."
     if ! ./agent-vm --destroy; then
         log_error "Failed to destroy VM"
         return "$EXIT_TEST_FAILED"
