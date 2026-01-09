@@ -79,7 +79,7 @@ repos:
       - id: hadolint
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: "v0.45.0"
+    rev: "v0.47.0"
     hooks:
       # Lint markdown files
       - id: markdownlint

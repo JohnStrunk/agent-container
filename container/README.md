@@ -49,7 +49,8 @@ container comes pre-configured with:
 
 ## Quick Start
 
-1. **Clone this repository** and create a symlink to make `start-work` globally available:
+1. **Clone this repository** and create a symlink to make `start-work`
+   globally available:
 
    ```bash
    git clone https://github.com/johnstrunk/agent-container.git
