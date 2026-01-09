@@ -774,6 +774,7 @@ fi
 if [[ "$WORKSPACE_EXISTS" == "false" ]]; then
   echo "Creating new workspace: $WORKSPACE_NAME"
   push_branch_to_vm "$VM_IP" "$BRANCH_NAME" "$WORKSPACE_NAME"
+  install_precommit_hooks "$VM_IP" "$WORKSPACE_NAME"
 elif [[ "$ACTION" == "push" ]]; then
   # Already handled in action handlers above, but this shouldn't happen
   push_branch_to_vm "$VM_IP" "$BRANCH_NAME" "$WORKSPACE_NAME"
