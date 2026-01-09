@@ -1,6 +1,7 @@
 # Integration Test List Flakiness
 
-**Issue:** Integration test `test_vm_approach()` Test 3 (workspace listing) fails intermittently with "Workspace test-vm-X not found in list"
+**Issue:** Integration test `test_vm_approach()` Test 3 (workspace listing)
+fails intermittently with "Workspace test-vm-X not found in list"
 
 **Status:** Under investigation
 

@@ -7,6 +7,7 @@
 **Symptom**: `terraform destroy` fails during VM destruction
 
 **Solution**:
+
 ```bash
 # Inspect the workspace state
 terraform workspace select <workspace-name>
@@ -28,9 +29,11 @@ virsh undefine <vm-name>
 
 **Symptom**: "Could not acquire IP allocation lock after 30 seconds"
 
-**Cause**: Another agent-vm process is allocating an IP, or previous process crashed while holding lock
+**Cause**: Another agent-vm process is allocating an IP, or previous
+process crashed while holding lock
 
 **Solution**:
+
 ```bash
 # Check for stuck agent-vm processes
 ps aux | grep agent-vm
@@ -46,6 +49,7 @@ rm -f /tmp/agent-vm-ip-allocation.lock
 **Cause**: You have uncommitted work in the VM that hasn't been committed
 
 **Solution**:
+
 ```bash
 # Connect to VM and commit changes
 ./agent-vm -b <branch-name>
@@ -68,6 +72,7 @@ exit
 **Cause**: VM was manually destroyed outside of agent-vm
 
 **Solution**:
+
 agent-vm automatically detects this and recreates. If recreation fails:
 
 ```bash
@@ -86,6 +91,7 @@ terraform workspace delete <workspace-name>
 **Symptom**: Cannot access files at `~/.agent-vm-mounts/<repo>-<branch>/`
 
 **Solution**:
+
 ```bash
 # Force unmount
 fusermount -u ~/.agent-vm-mounts/<repo>-<branch>
@@ -103,6 +109,7 @@ umount ~/.agent-vm-mounts/<repo>-<branch>
 **Cause**: Fixed in 2026-01-07 bug fixes, but old directories may remain
 
 **Solution**:
+
 ```bash
 # Safe cleanup (only removes empty directories)
 find ~/.agent-vm-mounts -type d -empty -delete
@@ -111,6 +118,7 @@ find ~/.agent-vm-mounts -type d -empty -delete
 ## Diagnostic Commands
 
 ### Check VM Status
+
 ```bash
 ./agent-vm --list                    # List all managed VMs
 virsh list --all                     # List all libvirt VMs
@@ -118,6 +126,7 @@ terraform workspace list             # List all workspaces
 ```
 
 ### Check Network Configuration
+
 ```bash
 virsh net-list --all                 # List networks
 virsh net-dhcp-leases default        # Show DHCP leases
@@ -125,6 +134,7 @@ ip addr show | grep 192.168          # Show host IPs
 ```
 
 ### Check Terraform State
+
 ```bash
 terraform workspace select <name>
 terraform state list                 # Show managed resources
@@ -132,6 +142,7 @@ terraform show                       # Show full state
 ```
 
 ### Check for Resource Leaks
+
 ```bash
 # Orphaned VMs (not managed by terraform)
 virsh list --all
