@@ -30,12 +30,14 @@ users:
     # Constrained sudo access for AI coding agent
     # - apt-get/apt/dpkg: Install system packages and development dependencies
     # - systemctl: Manage services during development (restart nginx, databases, etc.)
+    # - iptables: Required for libvirt NAT forwarding fixes
     # Note: User already has docker/libvirt/kvm group access, no sudo needed for those
     sudo:
       - "ALL=(ALL) NOPASSWD: /usr/bin/apt-get"
       - "ALL=(ALL) NOPASSWD: /usr/bin/apt"
       - "ALL=(ALL) NOPASSWD: /usr/bin/dpkg"
       - "ALL=(ALL) NOPASSWD: /usr/bin/systemctl"
+      - "ALL=(ALL) NOPASSWD: /usr/sbin/iptables"
     ssh_authorized_keys:
 %{ for key in ssh_keys ~}
       - ${key}
@@ -124,17 +126,49 @@ runcmd:
     export PATH="/usr/local/go/bin:\$PATH"
     EOF
   - chmod 644 /etc/profile.d/go-path.sh
-%{ if gcp_service_account_key != "" ~}
-  # Configure GCP environment variables for AI agents
+  # Configure AI agent environment variables from common list
   - |
-    cat > /etc/profile.d/gcp-ai-agent.sh <<EOF
-    export GOOGLE_APPLICATION_CREDENTIALS=/etc/google/application_default_credentials.json
-    export ANTHROPIC_VERTEX_PROJECT_ID="${vertex_project_id}"
-    export CLOUD_ML_REGION="${vertex_region}"
-    export CLAUDE_CODE_USE_VERTEX="true"
-    EOF
-  - chmod 644 /etc/profile.d/gcp-ai-agent.sh
+    cat > /etc/profile.d/ai-agent-env.sh <<'EOF'
+%{ for var in split("\n", env_vars) ~}
+%{ if var != "" ~}
+    # ${var}
+%{ if var == "GOOGLE_APPLICATION_CREDENTIALS" ~}
+%{ if gcp_service_account_key != "" ~}
+    export ${var}=/etc/google/application_default_credentials.json
+%{ else ~}
+    export ${var}
 %{ endif ~}
+%{ else ~}
+%{ if var == "ANTHROPIC_VERTEX_PROJECT_ID" ~}
+%{ if gcp_service_account_key != "" ~}
+    export ${var}="${vertex_project_id}"
+%{ else ~}
+    export ${var}
+%{ endif ~}
+%{ else ~}
+%{ if var == "CLOUD_ML_REGION" ~}
+%{ if gcp_service_account_key != "" ~}
+    export ${var}="${vertex_region}"
+%{ else ~}
+    export ${var}
+%{ endif ~}
+%{ else ~}
+%{ if var == "CLAUDE_CODE_USE_VERTEX" ~}
+%{ if gcp_service_account_key != "" ~}
+    export ${var}="true"
+%{ else ~}
+    export ${var}
+%{ endif ~}
+%{ else ~}
+    export ${var}
+%{ endif ~}
+%{ endif ~}
+%{ endif ~}
+%{ endif ~}
+%{ endif ~}
+%{ endfor ~}
+    EOF
+  - chmod 644 /etc/profile.d/ai-agent-env.sh
   # Install Go ${golang_version}
   - curl -fsSL https://go.dev/dl/go${golang_version}.linux-amd64.tar.gz -o /tmp/go.tar.gz
   - tar -C /usr/local -xzf /tmp/go.tar.gz
