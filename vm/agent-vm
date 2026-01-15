@@ -658,7 +658,7 @@ WORKSPACE_NAME="${REPO_NAME}-${BRANCH_NAME}"
 
 # Detect network subnet (same logic as before for nested VMs)
 if [ -z "$NETWORK_SUBNET" ]; then
-  CURRENT_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)192\.168\.\d+\.\d+(?=/)' | head -1)
+  CURRENT_IP=$(ip -4 addr show | grep -v virbr | grep -oP '(?<=inet\s)192\.168\.\d+\.\d+(?=/)' | head -1 || true)
 
   if [ -n "$CURRENT_IP" ]; then
     CURRENT_THIRD_OCTET=$(echo "$CURRENT_IP" | cut -d. -f3)
