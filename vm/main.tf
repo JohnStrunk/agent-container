@@ -63,6 +63,7 @@ locals {
   apt_packages    = trimspace(file("${path.module}/../common/packages/apt-packages.txt"))
   npm_packages    = trimspace(file("${path.module}/../common/packages/npm-packages.txt"))
   python_packages = trimspace(file("${path.module}/../common/packages/python-packages.txt"))
+  env_vars        = trimspace(file("${path.module}/../common/packages/envvars.txt"))
 
   # Read version information
   versions = {
@@ -169,6 +170,7 @@ resource "libvirt_cloudinit_disk" "cloud_init" {
     apt_packages            = local.apt_packages
     npm_packages            = local.npm_packages
     python_packages         = local.python_packages
+    env_vars                = local.env_vars
     golang_version          = local.versions["GOLANG_VERSION"]
     hadolint_version        = local.versions["HADOLINT_VERSION"]
   })

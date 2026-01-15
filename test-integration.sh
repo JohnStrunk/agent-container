@@ -247,9 +247,9 @@ generate_test_command() {
 #!/bin/bash
 set -e -o pipefail
 
-# Source GCP credentials profile if it exists
-if [ -f /etc/profile.d/gcp-ai-agent.sh ]; then
-    source /etc/profile.d/gcp-ai-agent.sh
+# Source AI agent environment variables if they exist
+if [ -f /etc/profile.d/ai-agent-env.sh ]; then
+    source /etc/profile.d/ai-agent-env.sh
 fi
 
 echo "[Test] Sending prompt to Claude Code..."
