@@ -99,6 +99,21 @@ resource "libvirt_network" "default" {
   ]
 }
 
+# Apply NAT fix for multi-interface hosts
+# Libvirt assumes eth0 but hosts may use wlp*, wlan*, tun*, etc.
+resource "null_resource" "nat_fix" {
+  depends_on = [libvirt_network.default]
+
+  provisioner "local-exec" {
+    command = "${path.module}/libvirt-nat-fix.sh"
+  }
+
+  # Re-run if network is recreated
+  triggers = {
+    network_id = libvirt_network.default.id
+  }
+}
+
 # Download Debian cloud image
 resource "libvirt_volume" "debian_base" {
   name = "debian-13-base.qcow2"
