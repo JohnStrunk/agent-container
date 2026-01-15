@@ -30,12 +30,14 @@ users:
     # Constrained sudo access for AI coding agent
     # - apt-get/apt/dpkg: Install system packages and development dependencies
     # - systemctl: Manage services during development (restart nginx, databases, etc.)
+    # - iptables: Required for libvirt NAT forwarding fixes
     # Note: User already has docker/libvirt/kvm group access, no sudo needed for those
     sudo:
       - "ALL=(ALL) NOPASSWD: /usr/bin/apt-get"
       - "ALL=(ALL) NOPASSWD: /usr/bin/apt"
       - "ALL=(ALL) NOPASSWD: /usr/bin/dpkg"
       - "ALL=(ALL) NOPASSWD: /usr/bin/systemctl"
+      - "ALL=(ALL) NOPASSWD: /usr/sbin/iptables"
     ssh_authorized_keys:
 %{ for key in ssh_keys ~}
       - ${key}
@@ -127,13 +129,13 @@ runcmd:
 %{ if gcp_service_account_key != "" ~}
   # Configure GCP environment variables for AI agents
   - |
-    cat > /etc/profile.d/gcp-ai-agent.sh <<EOF
+    cat > /etc/profile.d/ai-agent-env.sh <<EOF
     export GOOGLE_APPLICATION_CREDENTIALS=/etc/google/application_default_credentials.json
     export ANTHROPIC_VERTEX_PROJECT_ID="${vertex_project_id}"
     export CLOUD_ML_REGION="${vertex_region}"
     export CLAUDE_CODE_USE_VERTEX="true"
     EOF
-  - chmod 644 /etc/profile.d/gcp-ai-agent.sh
+  - chmod 644 /etc/profile.d/ai-agent-env.sh
 %{ endif ~}
   # Install Go ${golang_version}
   - curl -fsSL https://go.dev/dl/go${golang_version}.linux-amd64.tar.gz -o /tmp/go.tar.gz

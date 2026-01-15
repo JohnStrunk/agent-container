@@ -803,6 +803,23 @@ else
   echo "Using existing workspace: $WORKSPACE_NAME"
 fi
 
+# Build environment variable exports from common/packages/envvars.txt
+ENV_EXPORTS=""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENVVARS_FILE="$SCRIPT_DIR/../common/packages/envvars.txt"
+if [[ -f "$ENVVARS_FILE" ]]; then
+  while IFS= read -r var || [[ -n "$var" ]]; do
+    # Skip empty lines and comments
+    [[ -z "$var" || "$var" =~ ^# ]] && continue
+    # Only export if variable is set in host environment
+    if [[ -n "${!var:-}" ]]; then
+      # Escape special characters for shell
+      escaped_value=$(printf '%s' "${!var}" | sed "s/'/'\\\\''/g")
+      ENV_EXPORTS+="export $var='$escaped_value'; "
+    fi
+  done < "$ENVVARS_FILE"
+fi
+
 # Connect to VM
 echo "Connecting to VM workspace: $WORKSPACE_NAME (IP: $VM_IP)"
 echo ""
@@ -810,9 +827,9 @@ echo ""
 if [[ ${#VM_COMMAND[@]} -gt 0 ]]; then
   # Execute command and exit
   ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-    "cd ~/workspace/$WORKSPACE_NAME 2>/dev/null || cd ~; ${VM_COMMAND[*]}"
+    "${ENV_EXPORTS}cd ~/workspace/$WORKSPACE_NAME 2>/dev/null || cd ~; ${VM_COMMAND[*]}"
 else
   # Interactive session
   ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-    -t "cd ~/workspace/$WORKSPACE_NAME 2>/dev/null || cd ~; exec bash -l"
+    -t "${ENV_EXPORTS}cd ~/workspace/$WORKSPACE_NAME 2>/dev/null || cd ~; exec bash -l"
 fi
