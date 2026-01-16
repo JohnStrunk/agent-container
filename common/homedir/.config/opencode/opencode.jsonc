@@ -1,0 +1,42 @@
+{
+    // See: https://opencode.ai/docs/config/
+    "$schema": "https://opencode.ai/config.json",
+    "autoupdate": false,
+    "mcp": {
+        "context7": {
+            "type": "remote",
+            "url": "https://mcp.context7.com/mcp",
+            "headers": {
+                // Get a key from: https://context7.com/dashboard
+                "CONTEXT7_API_KEY": "{env:CONTEXT7_API_KEY}"
+            }
+        },
+        "github": {
+            "type": "remote",
+            "url": "https://api.githubcopilot.com/mcp",
+            "headers": {
+                "Authorization": "Bearer {env:GITHUB_MCP_API_KEY}"
+            }
+        },
+        "playwright": {
+            "type": "local",
+            "command": [
+                "npx",
+                "-y",
+                "@playwright/mcp",
+                "--headless",
+                "--isolated"
+            ]
+        },
+    },
+    // See: https://models.dev/ for model names
+    // "model": "google/gemini-3-pro-preview",
+    // "small_model": "google/gemini-3-flash-preview",
+    "model": "google-vertex-anthropic/claude-sonnet-4-5@20250929",
+    "small_model": "google-vertex-anthropic/claude-haiku-4-5@20251001",
+    "plugin": [
+        // https://github.com/shekohex/opencode-pty
+        "opencode-pty", // Interactive PTY management
+    ],
+    "theme": "system",
+}

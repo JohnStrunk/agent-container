@@ -24,6 +24,7 @@ python3-pip
 ripgrep
 rsync
 shellcheck
+shfmt
 socat
 sshfs
 tcl
