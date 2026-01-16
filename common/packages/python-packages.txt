@@ -2,3 +2,4 @@ dvc[all]
 pipenv
 poetry
 pre-commit
+ruff
