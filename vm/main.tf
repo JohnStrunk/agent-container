@@ -61,8 +61,8 @@ locals {
 
   # Read package lists from common/ directory
   apt_packages    = trimspace(file("${path.module}/../common/packages/apt-packages.txt"))
-  npm_packages    = trimspace(file("${path.module}/../common/packages/npm-packages.txt"))
-  python_packages = trimspace(file("${path.module}/../common/packages/python-packages.txt"))
+  npm_packages    = join(" ", split("\n", trimspace(file("${path.module}/../common/packages/npm-packages.txt"))))
+  python_packages = join(" ", split("\n", trimspace(file("${path.module}/../common/packages/python-packages.txt"))))
   env_vars        = trimspace(file("${path.module}/../common/packages/envvars.txt"))
 
   # Read version information

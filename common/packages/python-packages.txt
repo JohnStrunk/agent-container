@@ -1,1 +1,4 @@
-pre-commit poetry pipenv 'dvc[all]'
+dvc[all]
+pipenv
+poetry
+pre-commit
