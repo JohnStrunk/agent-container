@@ -53,7 +53,7 @@ This creates confusion and maintenance burden.
 │   ├── Dockerfile
 │   ├── entrypoint.sh
 │   ├── entrypoint_user.sh
-│   ├── start-work
+│   ├── agent-container
 │   ├── README.md             # Container-specific documentation
 │   └── CLAUDE.md             # Container-specific assistant guide
 │
@@ -230,7 +230,7 @@ Both approaches will use identical structure:
 
 ### Phase 4: Initial Testing
 15. Build container from container/Dockerfile
-16. Test container start-work script
+16. Test container agent-container script
 17. Test VM terraform plan
 18. Test VM terraform apply
 19. Verify homedir files deployed correctly in both
@@ -238,7 +238,7 @@ Both approaches will use identical structure:
 
 ### Phase 5: Cleanup
 21. Remove old files:
-    - Root: Dockerfile, start-work, entrypoint*.sh, files/
+    - Root: Dockerfile, agent-container, entrypoint*.sh, files/
     - yolo-vm/ directory entirely
 22. Update .gitignore if needed
 
@@ -254,7 +254,7 @@ Both approaches will use identical structure:
 Run twice - once before cleanup (step 15-20), once after (step 23-26):
 
 - [ ] Container builds successfully from container/Dockerfile
-- [ ] Container start-work creates worktree and launches
+- [ ] Container agent-container creates worktree and launches
 - [ ] VM terraform plan succeeds from vm/ directory
 - [ ] VM terraform apply creates working VM
 - [ ] Both approaches deploy correct homedir files
@@ -268,7 +268,7 @@ Run twice - once before cleanup (step 15-20), once after (step 23-26):
 ### Container Files to Update
 - `Dockerfile`: Change all COPY paths from `files/` to `../common/`
 - `Dockerfile`: Add package file reading logic
-- `start-work`: Verify no hardcoded paths need updating
+- `agent-container`: Verify no hardcoded paths need updating
 - Any script that references file locations
 
 ### VM Files to Update

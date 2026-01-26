@@ -85,7 +85,7 @@ and basic AI agent functionality for both container and VM approaches.
 /home/user/workspace/
 ├── test-integration.sh          # Main test script (new)
 ├── container/
-│   ├── start-work              # Used by container test
+│   ├── agent-container              # Used by container test
 │   └── Dockerfile              # Rebuilt by test
 └── vm/
     ├── vm-up.sh                # Used by VM test
@@ -105,7 +105,7 @@ Single unified script at repository root: `test-integration.sh`
 # Run both sequentially
 ./test-integration.sh --all
 
-# Pass custom credentials (inherits from start-work/vm-up.sh)
+# Pass custom credentials (inherits from agent-container/vm-up.sh)
 ./test-integration.sh --container --gcp-credentials ~/my-creds.json
 
 # Force rebuild (bypass Docker cache)
@@ -144,7 +144,7 @@ the required tooling (Docker, Terraform, libvirt).
 2. Build container image (5 min timeout)
    docker build -t ghcr.io/johnstrunk/agent-container -f container/Dockerfile .
 3. Start container with test command (90s timeout)
-   ./container/start-work -- bash -c "$(test_claude_command)"
+   ./container/agent-container -- bash -c "$(test_claude_command)"
 4. Validate Claude response contains "All systems go!"
 5. Cleanup (automatic via docker --rm)
 ```
@@ -228,8 +228,8 @@ fi
 # Custom path via flag
 ./test-integration.sh --container --gcp-credentials ~/my-creds.json
 
-# Passed to start-work:
-./container/start-work ${GCP_CREDS_ARG:+--gcp-credentials "$GCP_CREDS_PATH"}
+# Passed to agent-container:
+./container/agent-container ${GCP_CREDS_ARG:+--gcp-credentials "$GCP_CREDS_PATH"}
 ```
 
 **VM approach:**

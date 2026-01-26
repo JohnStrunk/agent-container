@@ -23,7 +23,7 @@ container/
 ├── Dockerfile              # Container image definition
 ├── entrypoint.sh          # Container startup script
 ├── entrypoint_user.sh     # User-level setup
-├── start-work             # Main script
+├── agent-container        # Main script
 ├── README.md              # Container documentation
 └── CLAUDE.md              # This file
 
@@ -97,7 +97,7 @@ Pre-commit hooks are extensively configured for:
 - Injected at container startup via `--gcp-credentials` flag
 - Auto-detected from `~/.config/gcloud/application_default_credentials.json`
 - Deleted when container exits
-- See `start-work --help` for details
+- See `agent-container --help` for details
 
 **Security:**
 
@@ -151,10 +151,10 @@ cd /home/user/workspace/container
 docker build -t ghcr.io/johnstrunk/agent-container -f Dockerfile ..
 
 # Test with current directory
-./start-work
+./agent-container
 
 # Test with a git branch (creates worktree)
-./start-work feature-branch-name
+./agent-container feature-branch-name
 ```
 
 ### Specific Tool Validation via Pre-commit
@@ -374,7 +374,7 @@ No direct tool commands are available.
    - Must pass 100% before task completion
 
 2. **Component-specific testing**
-   - Manual testing with `./start-work` script
+   - Manual testing with `./agent-container` script
    - Container build testing
    - Volume mount and permission testing
    - AI agent functionality testing within container
