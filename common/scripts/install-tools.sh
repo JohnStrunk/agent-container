@@ -8,6 +8,22 @@ set -e -o pipefail
 echo "Installing Claude Code using official installer..."
 curl -fsSL https://claude.ai/install.sh | bash
 
+# Copy Claude Code to system location for container use
+# The installer creates a symlink in ~/.local/bin, but we need the actual binary
+# in a system path so it's available to dynamically created users at runtime
+if [ -L "$HOME/.local/bin/claude" ]; then
+    # Follow the symlink and copy the actual binary
+    claude_target=$(readlink -f "$HOME/.local/bin/claude")
+    cp "$claude_target" /usr/local/bin/claude
+    chmod 755 /usr/local/bin/claude
+    echo "Copied Claude Code binary to /usr/local/bin for system-wide access"
+elif [ -f "$HOME/.local/bin/claude" ]; then
+    # If it's a regular file, just copy it
+    cp "$HOME/.local/bin/claude" /usr/local/bin/claude
+    chmod 755 /usr/local/bin/claude
+    echo "Copied Claude Code to /usr/local/bin for system-wide access"
+fi
+
 # Verify installation succeeded
 if ! command -v claude &> /dev/null; then
     echo "ERROR: Claude Code installation failed - claude command not found"
