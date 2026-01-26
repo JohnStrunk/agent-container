@@ -12,18 +12,25 @@ curl -fsSL https://claude.ai/install.sh | bash
 # The installer creates a symlink in ~/.local/bin, but we need the actual binary
 # in a system path so it's available to dynamically created users at runtime
 
+# Determine the home directory (cloud-init runcmd may not set $HOME)
+if [ -n "$HOME" ] && [ -d "$HOME" ]; then
+    claude_home="$HOME"
+else
+    claude_home="/root"
+fi
+
 # Wait for the installer to finish creating the symlink and downloading the binary
 # The installer may create the symlink before the binary is fully downloaded
 max_wait=30
 waited=0
 while [ $waited -lt $max_wait ]; do
-    if [ -L "$HOME/.local/bin/claude" ]; then
+    if [ -L "$claude_home/.local/bin/claude" ]; then
         # Symlink exists, now check if target exists
-        if claude_target=$(readlink -f "$HOME/.local/bin/claude") && [ -f "$claude_target" ]; then
+        if claude_target=$(readlink -f "$claude_home/.local/bin/claude") && [ -f "$claude_target" ]; then
             # Both symlink and target exist
             break
         fi
-    elif [ -f "$HOME/.local/bin/claude" ]; then
+    elif [ -f "$claude_home/.local/bin/claude" ]; then
         # Regular file exists
         break
     fi
@@ -31,14 +38,14 @@ while [ $waited -lt $max_wait ]; do
     waited=$((waited + 1))
 done
 
-if [ ! -L "$HOME/.local/bin/claude" ] && [ ! -f "$HOME/.local/bin/claude" ]; then
-    echo "ERROR: Claude installer did not create ~/.local/bin/claude after ${max_wait}s"
+if [ ! -L "$claude_home/.local/bin/claude" ] && [ ! -f "$claude_home/.local/bin/claude" ]; then
+    echo "ERROR: Claude installer did not create $claude_home/.local/bin/claude after ${max_wait}s"
     exit 1
 fi
 
-if [ -L "$HOME/.local/bin/claude" ]; then
+if [ -L "$claude_home/.local/bin/claude" ]; then
     # Follow the symlink and copy the actual binary
-    claude_target=$(readlink -f "$HOME/.local/bin/claude")
+    claude_target=$(readlink -f "$claude_home/.local/bin/claude")
     if [ -z "$claude_target" ] || [ ! -f "$claude_target" ]; then
         echo "ERROR: Failed to resolve Claude symlink to valid binary"
         exit 1
@@ -46,9 +53,9 @@ if [ -L "$HOME/.local/bin/claude" ]; then
     cp "$claude_target" /usr/local/bin/claude
     chmod 755 /usr/local/bin/claude
     echo "Copied Claude Code binary to /usr/local/bin for system-wide access"
-elif [ -f "$HOME/.local/bin/claude" ]; then
+elif [ -f "$claude_home/.local/bin/claude" ]; then
     # If it's a regular file, just copy it
-    cp "$HOME/.local/bin/claude" /usr/local/bin/claude
+    cp "$claude_home/.local/bin/claude" /usr/local/bin/claude
     chmod 755 /usr/local/bin/claude
     echo "Copied Claude Code to /usr/local/bin for system-wide access"
 fi
