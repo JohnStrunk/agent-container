@@ -215,7 +215,7 @@ Remove lines 27-49 from `entrypoint.sh` (the entire mount paths permission fixin
 
 ```bash
 # Ensure parent directories of mounted paths have correct permissions
-# Process CONTAINER_MOUNT_PATHS if provided by start-work script
+# Process CONTAINER_MOUNT_PATHS if provided by agent-container script
 if [[ -n "$CONTAINER_MOUNT_PATHS" ]]; then
     IFS=':' read -ra MOUNT_PATHS <<< "$CONTAINER_MOUNT_PATHS"
     for mount_path in "${MOUNT_PATHS[@]}"; do
@@ -421,14 +421,14 @@ to avoid overwriting pre-existing mount paths."
 
 ---
 
-## Task 8: Update start-work - Add Credential Handling Variables
+## Task 8: Update agent-container - Add Credential Handling Variables
 
 **Files:**
-- Modify: `start-work:6` (after IMAGE_NAME)
+- Modify: `agent-container:6` (after IMAGE_NAME)
 
 **Step 1: Add GCP credentials default path**
 
-Add after line 6 in `start-work`:
+Add after line 6 in `agent-container`:
 
 ```bash
 IMAGE_NAME="ghcr.io/johnstrunk/agent-container"
@@ -437,14 +437,14 @@ GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
 
 **Step 2: Verify syntax**
 
-Run: `bash -n start-work`
+Run: `bash -n agent-container`
 
 Expected: No output
 
 **Step 3: Commit credential variable**
 
 ```bash
-git add start-work
+git add agent-container
 git commit -m "feat: add GCP credentials default path variable
 
 Add GCP_CREDS_DEFAULT variable for auto-detecting credentials.
@@ -453,14 +453,14 @@ Will be used for credential injection logic."
 
 ---
 
-## Task 9: Update start-work - Remove Old CONTAINER_MOUNTS Array
+## Task 9: Update agent-container - Remove Old CONTAINER_MOUNTS Array
 
 **Files:**
-- Modify: `start-work:8-18`
+- Modify: `agent-container:8-18`
 
 **Step 1: Remove CONTAINER_MOUNTS array and related logic**
 
-Remove lines 8-18 from `start-work`:
+Remove lines 8-18 from `agent-container`:
 
 ```bash
 # Paths to mount at the same location inside the container
@@ -510,14 +510,14 @@ CONTAINER_MOUNT_PATHS=$(IFS=':'; echo "${MOUNTED_PATHS[*]}")
 
 **Step 4: Verify syntax**
 
-Run: `bash -n start-work`
+Run: `bash -n agent-container`
 
 Expected: No output
 
 **Step 5: Commit removal of old mounts**
 
 ```bash
-git add start-work
+git add agent-container
 git commit -m "refactor: remove old host directory mount logic
 
 Remove CONTAINER_MOUNTS array and mount building loop.
@@ -526,10 +526,10 @@ Isolated container no longer mounts host configs/caches."
 
 ---
 
-## Task 10: Update start-work - Add New Mount Logic
+## Task 10: Update agent-container - Add New Mount Logic
 
 **Files:**
-- Modify: `start-work:114` (where old mount args building was)
+- Modify: `agent-container:114` (where old mount args building was)
 
 **Step 1: Add new isolated mount logic**
 
@@ -572,14 +572,14 @@ This should be replaced by the new logic in Step 1.
 
 **Step 3: Verify syntax**
 
-Run: `bash -n start-work`
+Run: `bash -n agent-container`
 
 Expected: No output
 
 **Step 4: Commit new mount logic**
 
 ```bash
-git add start-work
+git add agent-container
 git commit -m "feat: implement isolated container mount strategy
 
 Replace old mounts with isolated strategy:
@@ -591,10 +591,10 @@ Replace old mounts with isolated strategy:
 
 ---
 
-## Task 11: Update start-work - Add GCP Credential Injection Logic
+## Task 11: Update agent-container - Add GCP Credential Injection Logic
 
 **Files:**
-- Modify: `start-work:61-80` (in argument parsing section)
+- Modify: `agent-container:61-80` (in argument parsing section)
 
 **Step 1: Add GCP_CREDS_PATH variable initialization**
 
@@ -662,15 +662,15 @@ fi
 
 **Step 4: Verify syntax**
 
-Run: `bash -n start-work`
+Run: `bash -n agent-container`
 
 Expected: No output
 
 **Step 5: Commit credential injection logic**
 
 ```bash
-git add start-work
-git commit -m "feat: add GCP credential injection to start-work
+git add agent-container
+git commit -m "feat: add GCP credential injection to agent-container
 
 Add --gcp-credentials flag with auto-detection from default path.
 Credentials are base64-encoded and passed via environment variable
@@ -679,10 +679,10 @@ to container for injection by entrypoint.sh."
 
 ---
 
-## Task 12: Update start-work - Modify Docker Run Command
+## Task 12: Update agent-container - Modify Docker Run Command
 
 **Files:**
-- Modify: `start-work:148-164` (docker run command)
+- Modify: `agent-container:148-164` (docker run command)
 
 **Step 1: Remove CONTAINER_MOUNT_PATHS environment variable**
 
@@ -727,14 +727,14 @@ Add to the environment variable list if not already present:
 
 **Step 4: Verify syntax**
 
-Run: `bash -n start-work`
+Run: `bash -n agent-container`
 
 Expected: No output
 
 **Step 5: Commit docker run updates**
 
 ```bash
-git add start-work
+git add agent-container
 git commit -m "refactor: update docker run command for isolation
 
 Remove CONTAINER_MOUNT_PATHS environment variable.
@@ -744,10 +744,10 @@ Add ANTHROPIC_API_KEY to environment passthrough."
 
 ---
 
-## Task 13: Update start-work - Update Usage Documentation
+## Task 13: Update agent-container - Update Usage Documentation
 
 **Files:**
-- Modify: `start-work:20-32` (usage function)
+- Modify: `agent-container:20-32` (usage function)
 
 **Step 1: Update usage function**
 
@@ -799,21 +799,21 @@ EOF
 
 **Step 2: Verify syntax**
 
-Run: `bash -n start-work`
+Run: `bash -n agent-container`
 
 Expected: No output
 
 **Step 3: Test usage display**
 
-Run: `./start-work --help`
+Run: `./agent-container --help`
 
 Expected: Usage message displayed with new isolation documentation
 
 **Step 4: Commit usage update**
 
 ```bash
-git add start-work
-git commit -m "docs: update start-work usage for isolated container
+git add agent-container
+git commit -m "docs: update agent-container usage for isolated container
 
 Update help text to reflect:
 - Credential injection options
@@ -1003,10 +1003,10 @@ For Vertex AI authentication, use credential file injection:
 
 ```bash
 # Auto-detected from default location
-start-work -b feature  # Uses ~/.config/gcloud/application_default_credentials.json
+agent-container -b feature  # Uses ~/.config/gcloud/application_default_credentials.json
 
 # Override with custom path
-start-work -b feature --gcp-credentials ~/my-service-account.json
+agent-container -b feature --gcp-credentials ~/my-service-account.json
 ```
 
 The credential file is:
@@ -1046,7 +1046,7 @@ Replace the file structure section with:
 - `entrypoint.sh` - Container startup script with user setup and credential
   injection
 - `entrypoint_user.sh` - User-level initialization
-- `start-work` - Main script to create worktrees and start containers
+- `agent-container` - Main script to create worktrees and start containers
 - `files/homedir/` - Built-in configuration files (copied to container)
   - `.claude.json` - Claude Code settings
   - `.gitconfig` - Git configuration
@@ -1255,7 +1255,7 @@ Add new section after Development Workflow:
 - Injected at container startup via `--gcp-credentials` flag
 - Auto-detected from `~/.config/gcloud/application_default_credentials.json`
 - Deleted when container exits
-- See `start-work --help` for details
+- See `agent-container --help` for details
 
 **Security:**
 
@@ -1320,10 +1320,10 @@ For Vertex AI, use credential file injection instead of mounting:
 
 ```bash
 # Auto-detect from default location
-start-work -b feature
+agent-container -b feature
 
 # Custom path
-start-work -b feature --gcp-credentials ~/my-sa.json
+agent-container -b feature --gcp-credentials ~/my-sa.json
 ```
 
 Credentials are ephemeral and deleted when container exits.
@@ -1541,7 +1541,7 @@ mkdir -p /tmp/test-creds
 echo '{"type": "service_account", "project_id": "test"}' > /tmp/test-creds/test-sa.json
 ```
 
-**Step 2: Test base64 encoding in start-work**
+**Step 2: Test base64 encoding in agent-container**
 
 Run:
 ```bash
@@ -1735,10 +1735,10 @@ Verified volume is shared across sessions."
 
 ---
 
-## Task 30: Integration Test with start-work
+## Task 30: Integration Test with agent-container
 
 **Files:**
-- Test: Full start-work script with isolated mounts
+- Test: Full agent-container script with isolated mounts
 
 **Step 1: Create test git repository**
 
@@ -1752,12 +1752,12 @@ git add README.md
 git commit -m "Initial commit"
 ```
 
-**Step 2: Test start-work with branch**
+**Step 2: Test agent-container with branch**
 
 Run:
 ```bash
 cd /tmp/test-repo
-/home/user/workspace/start-work -b test-feature echo "Success"
+/home/user/workspace/agent-container -b test-feature echo "Success"
 ```
 
 Expected:
@@ -1781,7 +1781,7 @@ Mounting cache volume: agent-container-cache
 Run:
 ```bash
 cd /tmp/test-repo
-/home/user/workspace/start-work -b test-feature2 echo "No creds"
+/home/user/workspace/agent-container -b test-feature2 echo "No creds"
 ```
 
 Expected:
@@ -1798,9 +1798,9 @@ Run: `rm -rf /tmp/test-repo`
 ```bash
 echo "Integration test passed: $(date)" >> docs/build-test.log
 git add docs/build-test.log
-git commit -m "test: verify start-work integration
+git commit -m "test: verify agent-container integration
 
-Tested full start-work workflow with git worktrees.
+Tested full agent-container workflow with git worktrees.
 Verified mount messages correct.
 Verified works without credentials.
 Verified worktree lifecycle."
@@ -1884,7 +1884,7 @@ Summary of changes:
 - Modified Dockerfile to copy configs to /etc/skel/
 - Updated entrypoint.sh for credential injection
 - Removed Docker socket and host mount handling
-- Updated start-work for isolated mount strategy
+- Updated agent-container for isolated mount strategy
 - Added GCP credential injection with auto-detection
 - Updated README.md and CLAUDE.md documentation
 - Tested build, credential injection, config copying, and integration
@@ -1906,7 +1906,7 @@ See docs/plans/2025-12-10-isolated-container-design.md for design."
 - ✅ Credential injection works
 - ✅ /etc/skel/ copying works with -n flag
 - ✅ Cache volume persists across sessions
-- ✅ start-work creates worktrees correctly
+- ✅ agent-container creates worktrees correctly
 - ✅ Isolated mounts work as expected
 - ✅ No credentials in git repository
 

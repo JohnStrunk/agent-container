@@ -67,6 +67,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.npm \
     xargs npm install -g --cache /root/.npm < /tmp/npm-packages.txt
 
+# Copy and run common tool installation script
+COPY ../common/scripts/install-tools.sh /tmp/install-tools.sh
+RUN chmod +x /tmp/install-tools.sh && \
+    /tmp/install-tools.sh && \
+    rm /tmp/install-tools.sh
+
 # Copy default configuration files to /etc/skel/
 # These will be copied to user home by entrypoint.sh
 COPY --chown=0:0 --chmod=u=rw,u+X,go=r,go+X ../common/homedir/ /etc/skel/

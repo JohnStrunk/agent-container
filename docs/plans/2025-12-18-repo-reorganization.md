@@ -242,7 +242,7 @@ git commit -m "feat: copy homedir configs to common directory"
 - Create: `container/Dockerfile`
 - Create: `container/entrypoint.sh`
 - Create: `container/entrypoint_user.sh`
-- Create: `container/start-work`
+- Create: `container/agent-container`
 
 **Step 1: Copy Dockerfile**
 
@@ -261,11 +261,11 @@ cp entrypoint_user.sh container/entrypoint_user.sh
 
 Expected: Files copied successfully
 
-**Step 3: Copy start-work script**
+**Step 3: Copy agent-container script**
 
 ```bash
-cp start-work container/start-work
-chmod +x container/start-work
+cp agent-container container/agent-container
+chmod +x container/agent-container
 ```
 
 Expected: File copied with execute permissions
@@ -695,23 +695,23 @@ git add vm/cloud-init.yaml.tftpl
 git commit -m "feat: update VM cloud-init to use package variables"
 ```
 
-### Task 9: Update Container start-work Script
+### Task 9: Update Container agent-container Script
 
 **Files:**
 
-- Modify: `container/start-work`
+- Modify: `container/agent-container`
 
 **Step 1: Check for hardcoded paths**
 
 ```bash
-grep -n "files/\|Dockerfile" container/start-work
+grep -n "files/\|Dockerfile" container/agent-container
 ```
 
 Expected: Find any references to files/ directory or Dockerfile location
 
 **Step 2: Update Dockerfile path reference**
 
-Find and replace in `container/start-work`:
+Find and replace in `container/agent-container`:
 
 OLD:
 ```bash
@@ -742,16 +742,16 @@ Note: Context stays at REPO_DIR to access ../common from container/
 **Step 4: Verify script syntax**
 
 ```bash
-bash -n container/start-work
+bash -n container/agent-container
 ```
 
 Expected: No syntax errors
 
-**Step 5: Commit start-work changes**
+**Step 5: Commit agent-container changes**
 
 ```bash
-git add container/start-work
-git commit -m "feat: update container start-work script for new paths"
+git add container/agent-container
+git commit -m "feat: update container agent-container script for new paths"
 ```
 
 ### Task 10: Update VM Scripts
@@ -846,7 +846,7 @@ Fast, lightweight isolation using Docker containers.
 
 ```bash
 cd container
-./start-work my-feature-branch
+./agent-container my-feature-branch
 ```
 
 ### VM Approach
@@ -1035,7 +1035,7 @@ NEW:
 - `Dockerfile` - Container image definition
 - `entrypoint.sh` - Container startup script with user setup
 - `entrypoint_user.sh` - User-level initialization
-- `start-work` - Script to create worktrees and start containers
+- `agent-container` - Script to create worktrees and start containers
 - `../common/homedir/` - Shared configuration files (built into container)
 - `../common/packages/` - Package lists (used during build)
 ```
@@ -1048,14 +1048,14 @@ OLD:
 ```bash
 git clone https://github.com/johnstrunk/agent-container.git
 mkdir -p ~/.local/bin
-ln -s "$(realpath agent-container/start-work)" ~/.local/bin/start-work
+ln -s "$(realpath agent-container/agent-container)" ~/.local/bin/agent-container
 ```
 
 NEW:
 ```bash
 git clone https://github.com/johnstrunk/agent-container.git
 mkdir -p ~/.local/bin
-ln -s "$(realpath agent-container/container/start-work)" ~/.local/bin/start-work
+ln -s "$(realpath agent-container/container/agent-container)" ~/.local/bin/agent-container
 ```
 
 **Step 5: Update configuration section**
@@ -1134,7 +1134,7 @@ container/
 ├── Dockerfile              # Container image definition
 ├── entrypoint.sh          # Container startup script
 ├── entrypoint_user.sh     # User-level setup
-├── start-work             # Main script
+├── agent-container             # Main script
 ├── README.md              # Container documentation
 └── CLAUDE.md              # This file
 
@@ -1515,11 +1515,11 @@ echo "Container build test: PASSED" >> /tmp/test-results.txt
 cd /home/user/workspace
 ```
 
-### Task 18: Test Container start-work Script
+### Task 18: Test Container agent-container Script
 
 **Files:**
 
-- Test: `container/start-work`
+- Test: `container/agent-container`
 
 **Step 1: Create test directory**
 
@@ -1536,10 +1536,10 @@ git commit -m "Initial commit"
 
 Expected: Test repo created
 
-**Step 2: Test start-work script (dry run check)**
+**Step 2: Test agent-container script (dry run check)**
 
 ```bash
-bash -n /home/user/workspace/container/start-work
+bash -n /home/user/workspace/container/agent-container
 ```
 
 Expected: No syntax errors
@@ -1547,7 +1547,7 @@ Expected: No syntax errors
 **Step 3: Check script would use correct paths**
 
 ```bash
-grep "Dockerfile" /home/user/workspace/container/start-work
+grep "Dockerfile" /home/user/workspace/container/agent-container
 ```
 
 Expected: Shows correct path to container/Dockerfile
@@ -1555,7 +1555,7 @@ Expected: Shows correct path to container/Dockerfile
 **Step 4: Document test results**
 
 ```bash
-echo "Container start-work script: SYNTAX OK" >> /tmp/test-results.txt
+echo "Container agent-container script: SYNTAX OK" >> /tmp/test-results.txt
 ```
 
 **Step 5: Cleanup test repo**
@@ -1728,7 +1728,7 @@ git tag phase-4-initial-testing
 - Delete: `Dockerfile`
 - Delete: `entrypoint.sh`
 - Delete: `entrypoint_user.sh`
-- Delete: `start-work`
+- Delete: `agent-container`
 - Delete: `files/`
 
 **Step 1: Remove root Dockerfile**
@@ -1747,10 +1747,10 @@ git rm entrypoint.sh entrypoint_user.sh
 
 Expected: Files staged for deletion
 
-**Step 3: Remove start-work script**
+**Step 3: Remove agent-container script**
 
 ```bash
-git rm start-work
+git rm agent-container
 ```
 
 Expected: File staged for deletion

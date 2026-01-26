@@ -74,7 +74,7 @@ is simpler than maintaining multiple env vars.
 
 ## Implementation
 
-### 1. Container: `container/start-work`
+### 1. Container: `container/agent-container`
 
 **Current credential detection (lines 76-79, 154-157):**
 
@@ -113,15 +113,15 @@ fi
 
 ```bash
 # Default
-./container/start-work -b test
+./container/agent-container -b test
 
 # Via env var
 export GOOGLE_APPLICATION_CREDENTIALS=~/custom.json
-./container/start-work -b test
+./container/agent-container -b test
 
 # CLI override
 export GOOGLE_APPLICATION_CREDENTIALS=~/from-env.json
-./container/start-work --gcp-credentials ~/from-flag.json -b test
+./container/agent-container --gcp-credentials ~/from-flag.json -b test
 ```
 
 ### 2. VM: `vm/vm-up.sh`
@@ -250,7 +250,7 @@ gcloud auth application-default login
 ls -la ~/.config/gcloud/application_default_credentials.json
 
 # Test all scripts
-./container/start-work -b test-default
+./container/agent-container -b test-default
 cd vm && ./vm-up.sh && ./vm-connect.sh
 ./test-integration.sh --all
 ```
@@ -264,7 +264,7 @@ cd vm && ./vm-up.sh && ./vm-connect.sh
 export GOOGLE_APPLICATION_CREDENTIALS=~/my-test-creds.json
 
 # Test all scripts
-./container/start-work -b test-env
+./container/agent-container -b test-env
 cd vm && ./vm-up.sh && ./vm-connect.sh
 ./test-integration.sh --all
 ```
@@ -278,7 +278,7 @@ cd vm && ./vm-up.sh && ./vm-connect.sh
 export GOOGLE_APPLICATION_CREDENTIALS=~/creds-from-env.json
 
 # Test container override
-./container/start-work --gcp-credentials ~/creds-from-flag.json -b test-flag
+./container/agent-container --gcp-credentials ~/creds-from-flag.json -b test-flag
 
 # Test integration override
 ./test-integration.sh --container --gcp-credentials ~/creds-from-flag.json
@@ -330,7 +330,7 @@ export GOOGLE_APPLICATION_CREDENTIALS=~/test-creds.json
 
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS=""
-./container/start-work -b test
+./container/agent-container -b test
 ```
 
 **Expected:** Falls back to default location (empty string treated as unset)
@@ -339,7 +339,7 @@ export GOOGLE_APPLICATION_CREDENTIALS=""
 
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS=/nonexistent/path.json
-./container/start-work -b test
+./container/agent-container -b test
 ```
 
 **Expected:** Script reports "No GCP credentials file found" error
@@ -349,7 +349,7 @@ export GOOGLE_APPLICATION_CREDENTIALS=/nonexistent/path.json
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS=~/custom.json
 # Default also exists at ~/.config/gcloud/...
-./container/start-work -b test
+./container/agent-container -b test
 ```
 
 **Expected:** Uses `~/custom.json` (env var takes precedence)
@@ -411,14 +411,14 @@ For Vertex AI, use credential file injection:
 
 ```bash
 # Auto-detect from default location
-start-work -b feature
+agent-container -b feature
 
 # Custom path via flag
-start-work -b feature --gcp-credentials ~/my-sa.json
+agent-container -b feature --gcp-credentials ~/my-sa.json
 
 # Custom path via env var
 export GOOGLE_APPLICATION_CREDENTIALS=~/my-sa.json
-start-work -b feature
+agent-container -b feature
 ```
 
 Credentials are ephemeral and deleted when container exits.
@@ -522,7 +522,7 @@ Implementation is successful when:
 
 ## Implementation Checklist
 
-- [ ] Update `container/start-work` with precedence logic
+- [ ] Update `container/agent-container` with precedence logic
 - [ ] Update `vm/vm-up.sh` with precedence logic (remove
       `GCP_CREDENTIALS_PATH`)
 - [ ] Update `test-integration.sh` with precedence logic

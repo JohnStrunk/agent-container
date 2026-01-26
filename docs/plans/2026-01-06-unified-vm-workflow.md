@@ -3,7 +3,7 @@
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to
 > implement this plan task-by-task.
 
-**Goal:** Create `agent-vm` command that matches container's `start-work`
+**Goal:** Create `agent-vm` command that matches container's `agent-container`
 experience with multi-VM support, filesystem sharing, and simple reconnection.
 
 **Architecture:** Use Terraform workspaces for multi-VM isolation, virtio-9p
@@ -1553,7 +1553,7 @@ Update "Project Overview" section to mention similarity:
 This repository provides **two approaches** for creating isolated AI
 development environments:
 
-1. **Container** - Docker-based, `start-work` command, fast startup
+1. **Container** - Docker-based, `agent-container` command, fast startup
 2. **VM** - Libvirt/KVM-based, `agent-vm` command (similar workflow)
 
 Both approaches support worktrees, filesystem sharing, and multi-instance

@@ -59,6 +59,9 @@ locals {
     }
   }
 
+  # Read install-tools.sh script
+  install_tools_script = file("${path.module}/../common/scripts/install-tools.sh")
+
   # Read package lists from common/ directory
   apt_packages    = trimspace(file("${path.module}/../common/packages/apt-packages.txt"))
   npm_packages    = join(" ", split("\n", trimspace(file("${path.module}/../common/packages/npm-packages.txt"))))
@@ -173,6 +176,7 @@ resource "libvirt_cloudinit_disk" "cloud_init" {
     env_vars                = local.env_vars
     golang_version          = local.versions["GOLANG_VERSION"]
     hadolint_version        = local.versions["HADOLINT_VERSION"]
+    install_tools_script    = local.install_tools_script
   })
 
   meta_data = <<-EOF

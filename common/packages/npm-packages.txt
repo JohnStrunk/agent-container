@@ -1,4 +1,3 @@
-@anthropic-ai/claude-code@latest
 @github/copilot@latest
 @google/gemini-cli@latest
 opencode-ai

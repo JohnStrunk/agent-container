@@ -15,14 +15,14 @@ default location. Remove custom `GCP_CREDENTIALS_PATH` env var.
 
 ---
 
-## Task 1: Update container/start-work with precedence logic
+## Task 1: Update container/agent-container with precedence logic
 
 **Files:**
-- Modify: `container/start-work:154-157`
+- Modify: `container/agent-container:154-157`
 
 **Step 1: Locate current credential detection code**
 
-Open `container/start-work` and find lines 154-157:
+Open `container/agent-container` and find lines 154-157:
 
 ```bash
 # Auto-detect if not specified
@@ -51,7 +51,7 @@ fi
 Run shellcheck to verify no syntax errors:
 
 ```bash
-shellcheck container/start-work
+shellcheck container/agent-container
 ```
 
 Expected: No errors (existing warnings are fine)
@@ -73,7 +73,7 @@ Expected: Logic falls through to default location
 **Step 5: Commit**
 
 ```bash
-git add container/start-work
+git add container/agent-container
 git commit -m "feat(container): add GOOGLE_APPLICATION_CREDENTIALS precedence
 
 Update credential detection to check GOOGLE_APPLICATION_CREDENTIALS
@@ -306,14 +306,14 @@ Examples:
 
 ```bash
 # Auto-detect from default location
-start-work -b feature
+agent-container -b feature
 
 # Custom path via flag
-start-work -b feature --gcp-credentials ~/my-sa.json
+agent-container -b feature --gcp-credentials ~/my-sa.json
 
 # Custom path via env var
 export GOOGLE_APPLICATION_CREDENTIALS=~/my-sa.json
-start-work -b feature
+agent-container -b feature
 ```
 
 Credentials are ephemeral and deleted when container exits.
@@ -329,10 +329,10 @@ For Vertex AI, use credential file injection instead of mounting:
 
 ```bash
 # Auto-detect from default location
-start-work -b feature
+agent-container -b feature
 
 # Custom path
-start-work -b feature --gcp-credentials ~/my-sa.json
+agent-container -b feature --gcp-credentials ~/my-sa.json
 ```
 
 Credentials are ephemeral and deleted when container exits.
@@ -561,7 +561,7 @@ tests design document."
 
 ```bash
 pre-commit run --files \
-  container/start-work \
+  container/agent-container \
   vm/vm-up.sh \
   test-integration.sh \
   container/CLAUDE.md \
@@ -588,7 +588,7 @@ git commit -m "style: apply pre-commit fixes"
 ## Task 11: Manual validation - Default location
 
 **Files:**
-- Test: `container/start-work`, `vm/vm-up.sh`, `test-integration.sh`
+- Test: `container/agent-container`, `vm/vm-up.sh`, `test-integration.sh`
 
 **Step 1: Ensure default credentials exist**
 
@@ -606,7 +606,7 @@ unset GOOGLE_APPLICATION_CREDENTIALS
 unset GCP_CREDENTIALS_PATH
 
 # Test container script detects default
-./container/start-work --help | grep -i "gcp"
+./container/agent-container --help | grep -i "gcp"
 ```
 
 Expected: Help text shows credential injection options
@@ -632,7 +632,7 @@ Record validation results (no commit needed - this is testing phase).
 ## Task 12: Manual validation - GOOGLE_APPLICATION_CREDENTIALS
 
 **Files:**
-- Test: `container/start-work`, `vm/vm-up.sh`, `test-integration.sh`
+- Test: `container/agent-container`, `vm/vm-up.sh`, `test-integration.sh`
 
 **Step 1: Set custom credentials path**
 
@@ -682,7 +682,7 @@ Record validation results (no commit needed).
 ## Task 13: Manual validation - CLI flag precedence
 
 **Files:**
-- Test: `container/start-work`, `test-integration.sh`
+- Test: `container/agent-container`, `test-integration.sh`
 
 **Step 1: Set environment variable**
 
@@ -694,7 +694,7 @@ export GOOGLE_APPLICATION_CREDENTIALS="$HOME/from-env.json"
 
 ```bash
 # Verify help shows --gcp-credentials flag
-./container/start-work --help | grep -A2 "gcp-credentials"
+./container/agent-container --help | grep -A2 "gcp-credentials"
 ```
 
 Expected: Shows `--gcp-credentials <path>` flag
@@ -787,7 +787,7 @@ Expected: Clean working tree (all changes committed)
 **Step 3: Create summary of changes**
 
 List of modified files:
-- `container/start-work`
+- `container/agent-container`
 - `vm/vm-up.sh`
 - `test-integration.sh`
 - `container/CLAUDE.md`

@@ -6,13 +6,13 @@
 
 ## Overview
 
-Unify the VM workflow to match the container's simple `start-work [-b branch]`
+Unify the VM workflow to match the container's simple `agent-container [-b branch]`
 experience. The new `agent-vm` command will provide seamless multi-VM support
 with worktrees, filesystem sharing, and simple reconnection.
 
 ## Goals
 
-1. **Simple workflow:** Single command like container's `start-work`
+1. **Simple workflow:** Single command like container's `agent-container`
 2. **Multi-VM support:** Run multiple VMs on different branches simultaneously
 3. **Host file access:** Edit files on host, build/run in VM (real-time sync)
 4. **Easy reconnection:** Open multiple terminals to same VM
@@ -175,7 +175,7 @@ find_available_ip() {
 ```bash
 agent-vm [-b branch] [options] [-- command...]
 
-1. Parse arguments (same as container's start-work)
+1. Parse arguments (same as container's agent-container)
 2. Determine worktree/VM naming
 3. Create/reuse worktree on host
 4. Determine Terraform workspace name
