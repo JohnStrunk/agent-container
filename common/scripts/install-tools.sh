@@ -19,27 +19,9 @@ else
     claude_home="/root"
 fi
 
-# Wait for the installer to finish creating the symlink and downloading the binary
-# The installer may create the symlink before the binary is fully downloaded
-max_wait=30
-waited=0
-while [ $waited -lt $max_wait ]; do
-    if [ -L "$claude_home/.local/bin/claude" ]; then
-        # Symlink exists, now check if target exists
-        if claude_target=$(readlink -f "$claude_home/.local/bin/claude") && [ -f "$claude_target" ]; then
-            # Both symlink and target exist
-            break
-        fi
-    elif [ -f "$claude_home/.local/bin/claude" ]; then
-        # Regular file exists
-        break
-    fi
-    sleep 1
-    waited=$((waited + 1))
-done
-
+# Check that the installer created the claude binary
 if [ ! -L "$claude_home/.local/bin/claude" ] && [ ! -f "$claude_home/.local/bin/claude" ]; then
-    echo "ERROR: Claude installer did not create $claude_home/.local/bin/claude after ${max_wait}s"
+    echo "ERROR: Claude installer did not create $claude_home/.local/bin/claude"
     exit 1
 fi
 
