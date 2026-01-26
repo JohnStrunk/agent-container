@@ -2,7 +2,7 @@
 
 set -e -o pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 
 function destroy_vm {
   echo "Destroying VM and all workspaces..."
@@ -805,7 +805,7 @@ fi
 
 # Build environment variable exports from common/packages/envvars.txt
 ENV_EXPORTS=""
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 ENVVARS_FILE="$SCRIPT_DIR/../common/packages/envvars.txt"
 if [[ -f "$ENVVARS_FILE" ]]; then
   while IFS= read -r var || [[ -n "$var" ]]; do
