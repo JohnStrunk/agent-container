@@ -24,7 +24,7 @@ Fast, lightweight isolation using Docker containers.
 
 ```bash
 cd container
-./start-work -b my-feature-branch
+./agent-container -b my-feature-branch
 ```
 
 ### VM Approach

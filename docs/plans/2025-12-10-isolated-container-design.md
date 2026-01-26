@@ -143,7 +143,7 @@ agent-container/
 ├── Dockerfile
 ├── entrypoint.sh
 ├── entrypoint_user.sh
-└── start-work
+└── agent-container
 ```
 
 **Built into image:**
@@ -187,7 +187,7 @@ pre-existing mount paths).
 **Environment variable passthrough:**
 
 ```bash
-# In start-work script
+# In agent-container script
 docker run \
     -e ANTHROPIC_API_KEY \
     -e ANTHROPIC_MODEL \
@@ -205,7 +205,7 @@ docker run \
 DEFAULT_GCP_CREDS="$HOME/.config/gcloud/application_default_credentials.json"
 
 # Override with flag
-start-work -b feature --gcp-credentials ~/custom-sa-key.json
+agent-container -b feature --gcp-credentials ~/custom-sa-key.json
 
 # Base64 encode and inject
 if [[ -f "$GCP_CREDS_PATH" ]]; then
@@ -399,7 +399,7 @@ mkdir -p "$HOMEDIR"
 chown "$USERNAME":"$GROUPNAME" "$HOMEDIR"
 ```
 
-### 3. start-work Script
+### 3. agent-container Script
 
 **Remove mounts:**
 
@@ -667,8 +667,8 @@ gcloud iam service-accounts keys create \
     ~/.config/gcloud/claude-code-dev.json \
     --iam-account=claude-code-dev@$PROJECT.iam.gserviceaccount.com
 
-# Use with start-work
-start-work -b feature \
+# Use with agent-container
+agent-container -b feature \
     --gcp-credentials ~/.config/gcloud/claude-code-dev.json
 ```
 
@@ -742,22 +742,22 @@ docker system df -v | grep agent-container-cache
 
 ### Phase 1: Parallel Implementation
 
-1. Keep existing `start-work` script
-2. Create new `start-work-isolated` script
+1. Keep existing `agent-container` script
+2. Create new `agent-container-isolated` script
 3. Users can test isolated mode without breaking existing workflow
 4. Gather feedback and iterate
 
 ### Phase 2: Default Switch
 
-1. Rename `start-work` → `start-work-legacy`
-2. Rename `start-work-isolated` → `start-work`
+1. Rename `agent-container` → `agent-container-legacy`
+2. Rename `agent-container-isolated` → `agent-container`
 3. Update documentation
 4. Announce change to users
 
 ### Phase 3: Legacy Removal
 
 1. After sufficient adoption (e.g., 3-6 months)
-2. Remove `start-work-legacy`
+2. Remove `agent-container-legacy`
 3. Clean up documentation references
 
 ### Backwards Compatibility
@@ -792,10 +792,10 @@ Optional network isolation modes:
 
 ```bash
 # Full network isolation (no internet)
-start-work -b feature --network none
+agent-container -b feature --network none
 
 # Limited network (specific domains only)
-start-work -b feature --network restricted
+agent-container -b feature --network restricted
 ```
 
 Requires Docker network configuration and potentially proxy setup.
@@ -806,10 +806,10 @@ Optional container resource constraints:
 
 ```bash
 # Limit CPU and memory
-start-work -b feature --cpus 2 --memory 4g
+agent-container -b feature --cpus 2 --memory 4g
 
 # Limit disk I/O
-start-work -b feature --device-write-bps /dev/sda:10mb
+agent-container -b feature --device-write-bps /dev/sda:10mb
 ```
 
 Prevents runaway agent processes from impacting host.
@@ -820,7 +820,7 @@ Log all agent actions for review:
 
 ```bash
 # Enable audit log
-start-work -b feature --audit-log ~/agent-logs/
+agent-container -b feature --audit-log ~/agent-logs/
 
 # Review what agent did
 cat ~/agent-logs/feature-2025-12-10.log
@@ -834,7 +834,7 @@ Record terminal session for playback:
 
 ```bash
 # Record session
-start-work -b feature --record
+agent-container -b feature --record
 
 # Replay later
 asciinema play ~/.claude/sessions/feature-2025-12-10.cast

@@ -632,7 +632,7 @@ test_container() {
         gcp_creds_arg=(--gcp-credentials "$GCP_CREDS_PATH")
     fi
 
-    if ! run_with_timeout 90 ./container/start-work \
+    if ! run_with_timeout 90 ./container/agent-container \
         "${gcp_creds_arg[@]}" \
         -- bash -c "$(generate_test_command)"; then
         log_error "Container test failed"
@@ -1271,7 +1271,7 @@ After implementation, verify:
 3. **Verbose output by default**: Shows progress during long-running
    operations (builds, provisioning)
 
-4. **Flexible credential handling**: Inherits mechanisms from start-work and
+4. **Flexible credential handling**: Inherits mechanisms from agent-container and
    vm-up.sh scripts
 
 5. **Deterministic validation**: Simple grep for expected phrase, tolerates

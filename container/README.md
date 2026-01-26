@@ -49,13 +49,13 @@ container comes pre-configured with:
 
 ## Quick Start
 
-1. **Clone this repository** and create a symlink to make `start-work`
+1. **Clone this repository** and create a symlink to make `agent-container`
    globally available:
 
    ```bash
    git clone https://github.com/johnstrunk/agent-container.git
    mkdir -p ~/.local/bin
-   ln -s "$(realpath agent-container/container/start-work)" ~/.local/bin/start-work
+   ln -s "$(realpath agent-container/container/agent-container)" ~/.local/bin/agent-container
    # Ensure ~/.local/bin is in your PATH
    ```
 
@@ -63,7 +63,7 @@ container comes pre-configured with:
 
    ```bash
    cd <your-development-repo>
-   start-work -b my-feature-branch
+   agent-container -b my-feature-branch
    ```
 
 This will:
@@ -79,10 +79,10 @@ This will:
 
 ```bash
 # Start work on a new branch (created from current HEAD)
-start-work -b new-feature
+agent-container -b new-feature
 
 # Switch to an existing branch
-start-work -b existing-branch
+agent-container -b existing-branch
 ```
 
 ### Inside the Container
@@ -146,10 +146,10 @@ For Vertex AI authentication, use credential file injection:
 
 ```bash
 # Auto-detected from default location
-start-work -b feature  # Uses ~/.config/gcloud/application_default_credentials.json
+agent-container -b feature  # Uses ~/.config/gcloud/application_default_credentials.json
 
 # Override with custom path
-start-work -b feature --gcp-credentials ~/my-service-account.json
+agent-container -b feature --gcp-credentials ~/my-service-account.json
 ```
 
 The credential file is:
@@ -170,7 +170,7 @@ The credential file is:
 - `Dockerfile` - Container image definition
 - `entrypoint.sh` - Container startup script with user setup
 - `entrypoint_user.sh` - User-level initialization
-- `start-work` - Script to create worktrees and start containers
+- `agent-container` - Script to create worktrees and start containers
 - `../common/homedir/` - Shared configuration files (built into container)
   - `.claude.json` - Claude Code settings
   - `.gitconfig` - Git configuration

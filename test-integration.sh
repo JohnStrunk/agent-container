@@ -316,8 +316,8 @@ test_container() {
     fi
 
     # Redirect stdin from /dev/null to break TTY connection
-    # This prevents start-work from allocating a TTY in non-interactive context
-    if ! run_with_timeout 90 ./container/start-work \
+    # This prevents agent-container from allocating a TTY in non-interactive context
+    if ! run_with_timeout 90 ./container/agent-container \
         "${gcp_creds_arg[@]}" \
         -- bash -c "$(generate_test_command)" < /dev/null; then
         log_error "Container test failed"
