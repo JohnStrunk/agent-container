@@ -11,8 +11,28 @@ curl -fsSL https://claude.ai/install.sh | bash
 # Copy Claude Code to system location for container use
 # The installer creates a symlink in ~/.local/bin, but we need the actual binary
 # in a system path so it's available to dynamically created users at runtime
-if [ ! -e "$HOME/.local/bin/claude" ]; then
-    echo "ERROR: Claude installer did not create ~/.local/bin/claude"
+
+# Wait for the installer to finish creating the symlink and downloading the binary
+# The installer may create the symlink before the binary is fully downloaded
+max_wait=30
+waited=0
+while [ $waited -lt $max_wait ]; do
+    if [ -L "$HOME/.local/bin/claude" ]; then
+        # Symlink exists, now check if target exists
+        if claude_target=$(readlink -f "$HOME/.local/bin/claude") && [ -f "$claude_target" ]; then
+            # Both symlink and target exist
+            break
+        fi
+    elif [ -f "$HOME/.local/bin/claude" ]; then
+        # Regular file exists
+        break
+    fi
+    sleep 1
+    waited=$((waited + 1))
+done
+
+if [ ! -L "$HOME/.local/bin/claude" ] && [ ! -f "$HOME/.local/bin/claude" ]; then
+    echo "ERROR: Claude installer did not create ~/.local/bin/claude after ${max_wait}s"
     exit 1
 fi
 
@@ -20,7 +40,7 @@ if [ -L "$HOME/.local/bin/claude" ]; then
     # Follow the symlink and copy the actual binary
     claude_target=$(readlink -f "$HOME/.local/bin/claude")
     if [ -z "$claude_target" ] || [ ! -f "$claude_target" ]; then
-        echo "ERROR: Failed to resolve Claude symlink"
+        echo "ERROR: Failed to resolve Claude symlink to valid binary"
         exit 1
     fi
     cp "$claude_target" /usr/local/bin/claude
