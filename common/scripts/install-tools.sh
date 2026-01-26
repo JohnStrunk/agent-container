@@ -8,15 +8,21 @@ set -e -o pipefail
 echo "Installing Claude Code using official installer..."
 curl -fsSL https://claude.ai/install.sh | bash
 
-# Copy Claude Code to system location for container use
-# The installer creates a symlink in ~/.local/bin, but we need the actual binary
-# in a system path so it's available to dynamically created users at runtime
+# Copy Claude Code to system location for multi-user access
+# The installer places the binary in ~/.local/bin, but we need it in a system path
+# so it's available to all users, including dynamically created container users.
+# Container environments may create users at runtime that don't have access to the
+# build-time user's home directory, so /usr/local/bin ensures universal availability.
 
 # Determine the home directory (cloud-init runcmd may not set $HOME)
 if [ -n "$HOME" ] && [ -d "$HOME" ]; then
     claude_home="$HOME"
 else
-    claude_home="/root"
+    # Fallback: try to get home from passwd database, then try /root
+    claude_home=$(getent passwd "$(whoami)" 2>/dev/null | cut -d: -f6)
+    if [ -z "$claude_home" ] || [ ! -d "$claude_home" ]; then
+        claude_home="/root"
+    fi
 fi
 
 # Check that the installer created the claude binary
@@ -40,6 +46,10 @@ elif [ -f "$claude_home/.local/bin/claude" ]; then
     cp "$claude_home/.local/bin/claude" /usr/local/bin/claude
     chmod 755 /usr/local/bin/claude
     echo "Copied Claude Code to /usr/local/bin for system-wide access"
+else
+    # This should never happen due to the check above, but be explicit
+    echo "ERROR: Unexpected state - claude binary exists but is neither symlink nor file"
+    exit 1
 fi
 
 # Verify installation succeeded
