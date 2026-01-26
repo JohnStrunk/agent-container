@@ -22,6 +22,10 @@ write_files:
     permissions: '0644'
     content: |
       agent-vm
+  - path: /tmp/install-tools.sh
+    permissions: '0755'
+    content: |
+      ${indent(6, install_tools_script)}
 
 users:
   - name: ${default_user}
@@ -158,6 +162,9 @@ runcmd:
   - rm -f /tmp/hadolint
   # Install AI coding agents globally
   - npm install -g ${npm_packages}
+  # Install custom tools using common script
+  - /tmp/install-tools.sh
+  - rm /tmp/install-tools.sh
 
   # Copy all files from /tmp/homedir to user's home directory
   - cp -r /tmp/homedir/. /home/${default_user}/
