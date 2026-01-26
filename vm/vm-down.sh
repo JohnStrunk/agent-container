@@ -2,7 +2,7 @@
 
 set -e -o pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 cd "$SCRIPT_DIR"
 
 # Auto-detect if terraform init is needed (first-time run or missing lock file)
