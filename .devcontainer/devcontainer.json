@@ -7,7 +7,7 @@
 	"image": "mcr.microsoft.com/devcontainers/base:bookworm@sha256:210b178bdf27aa3cab843ff98267da72ae27fa1d8e06c415efa756048a4a1a5b",
 	// Available features: https://containers.dev/features
 	"features": {
-		"ghcr.io/devcontainers/features/node:1.6.4": {},
+		"ghcr.io/devcontainers/features/node:1.7.0": {},
 		"ghcr.io/devcontainers-extra/features/pre-commit:2.0.18": {}
 	},
 	"postCreateCommand": {
