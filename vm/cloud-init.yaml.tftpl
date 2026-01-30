@@ -69,7 +69,8 @@ runcmd:
   - usermod -aG libvirt ${default_user}
   - usermod -aG kvm ${default_user}
   # Configure subuid/subgid for rootless Podman
-  - usermod --add-subuids 100000-165535 --add-subgids 100000-165535 ${default_user}
+  # Use 200000+ range to avoid conflicts with user UIDs (typically <200000)
+  - usermod --add-subuids 200000-265535 --add-subgids 200000-265535 ${default_user}
   # Mount shared filesystems if available
   - mkdir -p /worktree /mainrepo
   - |
