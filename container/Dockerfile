@@ -75,7 +75,13 @@ RUN chmod +x /tmp/install-tools.sh && \
 
 # Copy default configuration files to /etc/skel/
 # These will be copied to user home by entrypoint.sh
-COPY --chown=0:0 --chmod=u=rw,u+X,go=r,go+X ../common/homedir/ /etc/skel/
+COPY --chown=0:0 ../common/homedir/ /etc/skel/
+# Set permissions: directories 755, files 644, then make scripts executable
+# Using patterns to handle any .sh files or files in bin directories
+RUN find /etc/skel -type d -exec chmod 755 {} + && \
+    find /etc/skel -type f -exec chmod 644 {} + && \
+    find /etc/skel -type f -name "*.sh" -exec chmod 755 {} + && \
+    find /etc/skel -type f -path "*/bin/*" -exec chmod 755 {} +
 
 # Create environment marker file to identify container environment
 RUN echo "agent-container" > /etc/agent-environment && \
