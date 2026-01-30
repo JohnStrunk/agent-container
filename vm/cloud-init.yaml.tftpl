@@ -63,6 +63,8 @@ runcmd:
   - usermod -g ${user_gid} ${default_user}
   # Add user to docker group for container access
   - usermod -aG docker ${default_user}
+  # Add user to podman group (if it exists)
+  - getent group podman && usermod -aG podman ${default_user} || true
   # Add user to libvirt and kvm groups for virtualization access
   - usermod -aG libvirt ${default_user}
   - usermod -aG kvm ${default_user}
@@ -208,6 +210,7 @@ packages:
 %{ endfor ~}
   # VM-specific packages for nested virtualization
   - docker.io
+  - podman
   - qemu-system-x86
   - qemu-guest-agent
   - libvirt-daemon-system
