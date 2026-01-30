@@ -74,11 +74,6 @@ jobs:
         # https://github.com/actions/checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Install Podman
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y podman
-
       - name: Set up Docker Buildx
         # https://github.com/docker/setup-buildx-action
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
@@ -91,6 +86,21 @@ jobs:
       - name: Build devcontainer with Docker
         run: npx -- @devcontainers/cli build --workspace-folder . --cache-from type=gha,scope=devcontainer --cache-to type=gha,mode=min,scope=devcontainer
 
+  # This job builds the agent container image with Podman to verify compatibility
+  build-agent-container-podman:
+    name: "Build agent container with Podman"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        # https://github.com/actions/checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+
       - name: Build image with Podman
         run: |
           cd container
@@ -101,10 +111,36 @@ jobs:
           podman build $build_flags -t ghcr.io/johnstrunk/agent-container \
             -f Dockerfile ..
 
+  # This job builds the agent container image with Docker to verify compatibility
+  build-agent-container-docker:
+    name: "Build agent container with Docker"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        # https://github.com/actions/checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Docker Buildx
+        # https://github.com/docker/setup-buildx-action
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Build image with Docker
+        run: |
+          cd container
+          source lib/container-runtime.sh
+          CONTAINER_RUNTIME=docker
+          build_flags=$(get_build_flags "$CONTAINER_RUNTIME")
+          # shellcheck disable=SC2086
+          docker build $build_flags -t ghcr.io/johnstrunk/agent-container \
+            -f Dockerfile ..
+
   # This is a dummy job to determine success of the CI workflow
   ci-success:
     name: CI Workflow - Success
     needs:
+      - build-agent-container-docker
+      - build-agent-container-podman
       - devcontainer
       - pre-commit
     runs-on: ubuntu-latest
