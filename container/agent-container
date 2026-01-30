@@ -2,6 +2,11 @@
 
 set -e -o pipefail
 
+# Source container runtime detection library
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/container-runtime.sh"
+
 WORKTREE_BASE_DIR=~/src/worktrees
 IMAGE_NAME="ghcr.io/johnstrunk/agent-container"
 GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
@@ -23,6 +28,8 @@ Arguments:
                               (container will exit after execution)
 
 Environment Variables:
+  CONTAINER_RUNTIME          Container runtime to use (docker or podman)
+                            (auto-detected if not set, prefers docker)
   ANTHROPIC_API_KEY          Anthropic API key for Claude
   ANTHROPIC_MODEL            Model to use (default: claude-3-5-sonnet-20241022)
   GEMINI_API_KEY             Google Gemini API key
@@ -37,8 +44,8 @@ Isolation:
 
 Storage:
   * Worktrees are stored in $WORKTREE_BASE_DIR
-  * Cache volume: docker volume ls | grep agent-container-cache
-  * Clear cache: docker volume rm agent-container-cache
+  * Cache volume: <runtime> volume ls | grep agent-container-cache
+  * Clear cache: <runtime> volume rm agent-container-cache
 
 Examples:
   $0 -b feature-auth                    # Start interactive session
@@ -48,11 +55,13 @@ Examples:
 EOF
 }
 
-SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
-
 function build_image {
     echo "Building agent container image from $SCRIPT_DIR ..."
-    docker build -t "$IMAGE_NAME" -f "$SCRIPT_DIR/Dockerfile" "$SCRIPT_DIR/.."
+    local build_flags
+    build_flags=$(get_build_flags "$CONTAINER_RUNTIME")
+    # shellcheck disable=SC2086
+    $CONTAINER_RUNTIME build $build_flags -t "$IMAGE_NAME" \
+        -f "$SCRIPT_DIR/Dockerfile" "$SCRIPT_DIR/.."
 }
 
 function setup_worktree {
@@ -99,6 +108,13 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Detect container runtime
+CONTAINER_RUNTIME=$(detect_runtime)
+if ! validate_runtime "$CONTAINER_RUNTIME"; then
+    exit 1
+fi
+echo "Using container runtime: $CONTAINER_RUNTIME"
 
 # Determine if we should use git worktrees
 if [[ -n "$BRANCH_NAME" && -d .git ]]; then
@@ -186,7 +202,6 @@ fi
 
 # Build environment variable flags from common list
 ENVVAR_FLAGS=()
-SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 ENVVARS_FILE="$SCRIPT_DIR/../common/packages/envvars.txt"
 if [[ -f "$ENVVARS_FILE" ]]; then
     while IFS= read -r var || [[ -n "$var" ]]; do
@@ -196,10 +211,18 @@ if [[ -f "$ENVVARS_FILE" ]]; then
     done < "$ENVVARS_FILE"
 fi
 
-docker run --rm "${TTY_FLAGS[@]}" \
+# Get runtime-specific run flags
+RUNTIME_FLAGS=()
+runtime_flags_str=$(get_run_flags "$CONTAINER_RUNTIME")
+if [[ -n "$runtime_flags_str" ]]; then
+    read -ra RUNTIME_FLAGS <<< "$runtime_flags_str"
+fi
+
+$CONTAINER_RUNTIME run --rm "${TTY_FLAGS[@]}" \
     --name "$CONTANIER_NAME" \
     --hostname "$CONTANIER_NAME" \
     "${MOUNT_ARGS[@]}" \
+    "${RUNTIME_FLAGS[@]}" \
     -w "$WORKTREE_DIR" \
     -e EUID="$(id -u)" \
     -e EGID="$(id -g)" \
