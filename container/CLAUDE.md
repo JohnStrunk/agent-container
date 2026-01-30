@@ -37,6 +37,7 @@ container/
 ### Container Environment
 
 - **Base**: Debian 13 slim
+- **Container Runtime**: Docker or Podman (auto-detected)
 - **Runtime**: Node.js, Python 3, Docker CLI
 - **AI Agents**: Claude Code, Gemini CLI (installed via npm)
 - **Development Tools**: Git, curl, gosu, ripgrep, jq, yq
@@ -230,6 +231,8 @@ manually fix all reported issues
 
 ### Container Runtime
 
+- `CONTAINER_RUNTIME` - Force runtime (docker or podman, default:
+  auto-detect)
 - `EUID` - User ID for container user (default: 1000)
 - `EGID` - Group ID for container user (default: 1000)
 

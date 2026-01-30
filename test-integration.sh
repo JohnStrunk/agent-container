@@ -130,17 +130,20 @@ validate_prerequisites() {
 
     log "Validating prerequisites..."
 
-    # Check Docker for container tests
+    # Check Docker/Podman for container tests
     if [[ "$TEST_TYPE" == "container" ]] || [[ "$TEST_TYPE" == "all" ]]; then
-        if ! command -v docker &>/dev/null; then
-            log_error "docker not found. Install Docker first."
+        if ! command -v docker &>/dev/null && \
+           ! command -v podman &>/dev/null; then
+            log_error "No container runtime found (docker or podman)"
+            log_error "  Install Docker: https://docs.docker.com/engine/install/"
+            log_error "  Install Podman: https://podman.io/getting-started/installation"
             ((errors++))
-        elif ! docker info &>/dev/null; then
-            log_error "Docker daemon not running"
-            log_error "  Start with: sudo systemctl start docker"
-            ((errors++))
-        else
-            log "✓ Docker installed and running"
+        elif [[ -n "${CONTAINER_RUNTIME:-}" ]]; then
+            if ! validate_runtime "$CONTAINER_RUNTIME"; then
+                ((errors++))
+            else
+                log "✓ $CONTAINER_RUNTIME installed and running"
+            fi
         fi
     fi
 
@@ -289,9 +292,17 @@ test_container() {
     start_time=$(date +%s)
 
     # Step 1: Build image
-    log "[Container] Building image..."
-    local build_cmd=(docker build -t ghcr.io/johnstrunk/agent-container
+    log "[Container] Building image with $CONTAINER_RUNTIME..."
+    local build_cmd=("$CONTAINER_RUNTIME" build -t ghcr.io/johnstrunk/agent-container
                      -f container/Dockerfile .)
+
+    # Add runtime-specific build flags
+    local build_flags
+    build_flags=$(get_build_flags "$CONTAINER_RUNTIME")
+    if [[ -n "$build_flags" ]]; then
+        read -ra build_flags_array <<< "$build_flags"
+        build_cmd+=("${build_flags_array[@]}")
+    fi
 
     if [[ "$FORCE_REBUILD" == "true" ]]; then
         log "[Container] Force rebuild enabled (--no-cache)"
@@ -503,6 +514,18 @@ chmod +x /tmp/test-claude.sh
 
 main() {
     parse_args "$@"
+
+    # Detect container runtime for container tests
+    if [[ "$TEST_TYPE" == "container" ]] || [[ "$TEST_TYPE" == "all" ]]; then
+        # Source runtime detection from container/lib
+        SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+        # shellcheck source=container/lib/container-runtime.sh
+        # shellcheck disable=SC1091
+        source "$SCRIPT_DIR/container/lib/container-runtime.sh"
+
+        CONTAINER_RUNTIME=$(detect_runtime)
+        log "Detected container runtime: $CONTAINER_RUNTIME"
+    fi
 
     # Check environment - integration tests cannot run in container
     if [[ -f /etc/agent-environment ]]; then

@@ -195,7 +195,8 @@ All agents have access to:
 
 - **Languages**: Python 3, Go 1.25.0, Node.js
 - **Package Managers**: npm, pip, uv, poetry, pipenv
-- **Development Tools**: git, docker, jq, ripgrep
+- **Development Tools**: git, jq, ripgrep
+- **Container Runtimes**: docker, podman (for testing container approach)
 - **Python Tools**: pre-commit, dvc
 
 ## Configuration

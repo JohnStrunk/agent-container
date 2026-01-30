@@ -11,16 +11,19 @@ approaches.
 | **Isolation** | Strong (namespaces) | Strongest (full VM) |
 | **Nested virtualization** | No | Yes (libvirt/KVM) |
 | **Resource overhead** | Minimal | Moderate |
-| **Best for** | Quick iterations, development | Infrastructure testing, VMs |
-| **Requires** | Docker | libvirt/KVM, Terraform |
+| **Multi-runtime** | Docker or Podman | libvirt/KVM |
+| **Best for** | Quick iterations, development | Testing, VMs |
+| **Requires** | Docker or Podman | libvirt/KVM, Terraform |
 
 ## Quick Start
 
 ### Container Approach
 
-Fast, lightweight isolation using Docker containers.
+Fast, lightweight isolation using Docker or Podman containers.
 
 → **[Container Documentation](container/README.md)**
+
+**Prerequisites:** Docker or Podman (auto-detected)
 
 ```bash
 cd container

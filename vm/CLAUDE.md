@@ -30,7 +30,8 @@ vm/
 - **Infrastructure**: Terraform, libvirt/KVM, cloud-init
 - **VM OS**: Debian 13 (Trixie)
 - **AI Agents**: Claude Code, Gemini CLI, GitHub Copilot
-- **Development Tools**: Git, Node.js, Python, Go, Docker, Terraform
+- **Development Tools**: Git, Node.js, Python, Go, Docker, Podman,
+  Terraform
 
 ## Development Workflow
 

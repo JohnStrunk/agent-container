@@ -47,6 +47,37 @@ container comes pre-configured with:
 - **Git Worktrees**: Multiple concurrent sessions on different branches
 - **User Permissions**: Proper UID/GID mapping to avoid permission issues
 
+## Prerequisites
+
+- **Container Runtime**: Docker or Podman (auto-detected)
+- Git
+- Bash
+
+**Runtime selection:**
+
+The container runtime is automatically detected (Docker first, then
+Podman). To override:
+
+```bash
+export CONTAINER_RUNTIME=podman
+agent-container -b my-feature-branch
+```
+
+### Install Docker
+
+Follow instructions at: <https://docs.docker.com/get-docker/>
+
+### Install Podman
+
+```bash
+# Debian/Ubuntu
+sudo apt-get update
+sudo apt-get install -y podman
+
+# Fedora/RHEL
+sudo dnf install -y podman
+```
+
 ## Quick Start
 
 1. **Clone this repository** and create a symlink to make `agent-container`
@@ -158,12 +189,6 @@ The credential file is:
 - Written to `/etc/google/application_default_credentials.json`
 - Deleted when container exits (ephemeral)
 - Never stored in the git repository
-
-## Requirements
-
-- Docker
-- Git
-- Bash
 
 ## File Structure
 
