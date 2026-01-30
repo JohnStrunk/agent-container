@@ -68,6 +68,8 @@ runcmd:
   # Add user to libvirt and kvm groups for virtualization access
   - usermod -aG libvirt ${default_user}
   - usermod -aG kvm ${default_user}
+  # Configure subuid/subgid for rootless Podman
+  - usermod --add-subuids 100000-165535 --add-subgids 100000-165535 ${default_user}
   # Mount shared filesystems if available
   - mkdir -p /worktree /mainrepo
   - |
