@@ -1,9 +1,10 @@
 # Stage 1: Download and extract Go
 FROM debian:13-slim@sha256:77ba0164de17b88dd0bf6cdc8f65569e6e5fa6cd256562998b62553134a00ef0 AS golang-installer
 ARG GOLANG_VERSION=1.25.0
-# hadolint ignore=DL3008
+# hadolint ignore=DL3008,SC2086
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
-    curl -fsSLo /tmp/go.tar.gz https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz && \
+    ARCH="$(dpkg --print-architecture)" && \
+    curl -fsSLo /tmp/go.tar.gz https://go.dev/dl/go${GOLANG_VERSION}.linux-${ARCH}.tar.gz && \
     tar -C /tmp -xzf /tmp/go.tar.gz
 
 # Stage 2: Final image
@@ -38,7 +39,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
     curl -fsSL https://apt.releases.hashicorp.com/gpg > /etc/apt/trusted.gpg.d/hashicorp.asc && \
-    echo "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main" > /etc/apt/sources.list.d/hashicorp.list && \
+    echo "deb https://apt.releases.hashicorp.com $(lsb_release -cs) main" > /etc/apt/sources.list.d/hashicorp.list && \
     apt-get update && \
     apt-get install -y --no-install-recommends terraform
 
@@ -52,7 +53,9 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 # Install hadolint
 ARG HADOLINT_VERSION=2.12.0
 # Note: Version sourced from versions.txt, but ARG defaults kept for compatibility
-RUN curl -fsSLo /tmp/hadolint https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64 && \
+# hadolint ignore=SC2086
+RUN ARCH="$(uname -m)" && \
+    curl -fsSLo /tmp/hadolint https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-${ARCH} && \
     install /tmp/hadolint /usr/local/bin && \
     rm -f /tmp/hadolint
 
