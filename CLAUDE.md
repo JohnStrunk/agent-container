@@ -6,7 +6,7 @@ This repository provides **two approaches** for creating isolated AI
 development environments:
 
 1. **Container** - Docker-based, `agent-container` command, fast startup
-2. **VM** - Libvirt/KVM-based, `agent-vm` command (similar workflow)
+2. **VM** - Lima-based, `agent-vm` command (similar workflow)
 
 Both approaches support worktrees, filesystem sharing, and multi-instance
 operation.
@@ -36,7 +36,7 @@ pwd
 ## Integration Tests
 
 Before committing changes that affect environment setup (Dockerfiles,
-Terraform configs, credential injection, or `common/` configs), run
+Lima configs, credential injection, or `common/` configs), run
 integration tests:
 
 ```bash
