@@ -1,0 +1,63 @@
+---
+# Lima VM template for agent-vm
+# Provides isolated development environment for AI coding agents
+
+# VM backend - QEMU works on both Linux and macOS
+vmType: "qemu"
+
+# OS images
+images:
+  - location: "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2"
+    arch: "x86_64"
+
+# Default resources (overridable via start command)
+cpus: 4
+memory: "8GiB"
+disk: "100GiB"
+
+# Disable Lima's default mounts (we use forward SSHFS instead)
+mounts: []
+
+# SSH configuration
+ssh:
+  localPort: 0  # Auto-assign port
+  loadDotSSHPubKeys: false  # Use Lima-generated keys only
+  forwardAgent: false       # Security: no agent forwarding
+
+# Port forwarding (none needed by default)
+portForwards: []
+
+# Provisioning scripts
+provision:
+  # System-level provisioning
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -e -o pipefail
+
+      # Run the main provisioning script
+      {{.Dir}}/lima-provision.sh
+
+  # User-level setup (runs as default Lima user)
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -e -o pipefail
+
+      # Create workspace directory
+      mkdir -p ~/workspace
+
+      # Set default directory in bashrc
+      echo "cd ~/workspace" >> ~/.bashrc
+
+# Firmware (default UEFI)
+firmware:
+  legacyBIOS: false
+
+# Video display (headless)
+video:
+  display: "none"
+
+# Network (default user-mode networking)
+networks:
+  - lima: shared
