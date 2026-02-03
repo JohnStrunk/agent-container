@@ -47,8 +47,10 @@ provision:
       # Create workspace directory
       mkdir -p ~/workspace
 
-      # Set default directory in bashrc
-      echo "cd ~/workspace" >> ~/.bashrc
+      # Set default directory in bashrc (idempotent)
+      if ! grep -q "cd ~/workspace" ~/.bashrc 2>/dev/null; then
+        echo "cd ~/workspace" >> ~/.bashrc
+      fi
 
 # Firmware (default UEFI)
 firmware:
