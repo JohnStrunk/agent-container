@@ -693,12 +693,22 @@ case "$COMMAND" in
     while [[ $# -gt 0 ]]; do
       case $1 in
         --memory)
-          MEMORY="$2"
-          shift 2
+          shift
+          if [[ ! "$1" =~ ^[0-9]+$ ]] || [[ "$1" -lt 1 ]] || [[ "$1" -gt 128 ]]; then
+            echo "Error: --memory must be a positive integer between 1 and 128 (GiB)" >&2
+            exit 1
+          fi
+          MEMORY="$1"
+          shift
           ;;
         --vcpu)
-          VCPU="$2"
-          shift 2
+          shift
+          if [[ ! "$1" =~ ^[0-9]+$ ]] || [[ "$1" -lt 1 ]] || [[ "$1" -gt 64 ]]; then
+            echo "Error: --vcpu must be a positive integer between 1 and 64" >&2
+            exit 1
+          fi
+          VCPU="$1"
+          shift
           ;;
         -h|--help)
           usage
