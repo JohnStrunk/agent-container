@@ -57,8 +57,7 @@ Migrate the VM approach from Terraform + libvirt to Lima (https://lima-vm.io/) t
 vm/
 ├── agent-vm.yaml              # Lima template (replaces main.tf)
 ├── lima-provision.sh          # Provisioning script (replaces cloud-init.yaml.tftpl)
-├── agent-vm                   # CLI wrapper (refactored, keeps name)
-├── vm-common.sh               # Shared functions (minimal changes)
+├── agent-vm                   # CLI wrapper (refactored, all functions inline)
 ├── README.md                  # Updated documentation
 ├── CLAUDE.md                  # Updated documentation
 └── TROUBLESHOOTING.md         # Updated documentation
@@ -81,6 +80,7 @@ vm/
 - `cloud-init.yaml.tftpl` - Replaced by `lima-provision.sh`
 - `libvirt-nat-fix.sh` - Not needed (Lima handles networking)
 - `vm-ssh-key`, `vm-ssh-key.pub` - Lima manages keys automatically
+- `vm-common.sh` - Functions inlined into `agent-vm` script
 
 ## CLI Interface
 
@@ -754,8 +754,7 @@ The Lima migration is a **breaking change** requiring users to destroy existing 
 - `vm/lima-provision.sh` (provisioning script)
 
 **Files modified:**
-- `vm/agent-vm` (refactored for Lima)
-- `vm/vm-common.sh` (updated for Lima)
+- `vm/agent-vm` (refactored for Lima, all functions inline)
 - `vm/README.md` (rewritten)
 - `vm/CLAUDE.md` (rewritten)
 - `vm/TROUBLESHOOTING.md` (updated)
