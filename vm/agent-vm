@@ -3,6 +3,167 @@
 set -e -o pipefail
 
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+VM_NAME="agent-vm"
+VM_HOST="lima-${VM_NAME}"
+SSH_CONFIG="$HOME/.lima/${VM_NAME}/ssh.config"
+MOUNT_DIR="$HOME/.agent-vm-mounts/workspace"
+
+# Detect platform for unmount command
+PLATFORM="$(uname -s)"
+case "$PLATFORM" in
+  Linux*)
+    UNMOUNT_CMD="fusermount -u"
+    ;;
+  Darwin*)
+    UNMOUNT_CMD="umount"
+    ;;
+  *)
+    echo "Unsupported platform: $PLATFORM"
+    exit 1
+    ;;
+esac
+
+function vm_exists {
+  limactl list --format json 2>/dev/null | grep -q "\"name\":\"$VM_NAME\""
+}
+
+function vm_is_running {
+  if ! vm_exists; then
+    return 1
+  fi
+  limactl list --format json 2>/dev/null | grep "\"name\":\"$VM_NAME\"" | grep -q "\"status\":\"Running\""
+}
+
+function unmount_vm_workspace {
+  if mountpoint -q "$MOUNT_DIR" 2>/dev/null; then
+    echo "Unmounting: $MOUNT_DIR"
+    $UNMOUNT_CMD "$MOUNT_DIR" 2>/dev/null || true
+    sleep 1
+  fi
+}
+
+function mount_vm_workspace {
+  mkdir -p "$MOUNT_DIR"
+
+  # Check if already mounted
+  if mountpoint -q "$MOUNT_DIR" 2>/dev/null; then
+    return 0
+  fi
+
+  echo "Mounting VM workspace via SSHFS..."
+
+  # Check if sshfs is available
+  if ! command -v sshfs >/dev/null 2>&1; then
+    echo ""
+    echo "⚠️  WARNING: sshfs not installed"
+    echo ""
+    echo "Install it to edit files on your host:"
+    echo "  Linux (Debian/Ubuntu): sudo apt-get install sshfs"
+    echo "  macOS: brew install macfuse && brew install sshfs"
+    echo ""
+    echo "Continuing without SSHFS mount..."
+    return 1
+  fi
+
+  # Mount with Lima SSH config
+  if sshfs -F "$SSH_CONFIG" \
+        -o reconnect \
+        -o ServerAliveInterval=15 \
+        -o ServerAliveCountMax=3 \
+        -o follow_symlinks \
+        "${VM_HOST}:/home/user/workspace" "$MOUNT_DIR"; then
+    echo "✓ Mounted at: $MOUNT_DIR"
+    return 0
+  else
+    echo "⚠️  Could not mount via SSHFS (continuing without mount)"
+    echo "   Mount point: $MOUNT_DIR"
+    echo "   VM host: $VM_HOST"
+    return 1
+  fi
+}
+
+function start_vm {
+  local memory="$1"
+  local vcpu="$2"
+  local template_path="$SCRIPT_DIR/agent-vm.yaml"
+
+  # Check if VM exists
+  if vm_exists; then
+    echo "VM already exists: $VM_NAME"
+
+    # Warn if resource overrides provided
+    if [[ -n "$memory" || -n "$vcpu" ]]; then
+      echo "WARNING: VM already exists. Resource options ignored."
+      echo "To apply new resources:"
+      echo "  ./agent-vm destroy"
+      if [[ -n "$memory" ]]; then
+        echo "  ./agent-vm start --memory $memory"
+      fi
+      if [[ -n "$vcpu" ]]; then
+        echo "  ./agent-vm start --vcpu $vcpu"
+      fi
+      echo ""
+    fi
+
+    # Start if stopped
+    if ! vm_is_running; then
+      echo "Starting VM: $VM_NAME"
+      limactl start "$VM_NAME"
+    else
+      echo "VM is already running"
+    fi
+    return 0
+  fi
+
+  echo "Creating new VM: $VM_NAME"
+
+  # Handle resource overrides
+  if [[ -n "$memory" || -n "$vcpu" ]]; then
+    # Create temporary template with overrides
+    local temp_template
+    temp_template=$(mktemp)
+    cp "$template_path" "$temp_template"
+
+    if [[ -n "$memory" ]]; then
+      sed -i.bak "s/^memory:.*/memory: \"${memory}GiB\"/" "$temp_template"
+    fi
+    if [[ -n "$vcpu" ]]; then
+      sed -i.bak "s/^cpus:.*/cpus: $vcpu/" "$temp_template"
+    fi
+
+    # Clean up backup files
+    rm -f "${temp_template}.bak"
+
+    template_path="$temp_template"
+  fi
+
+  # Detect and export GCP credentials for provisioning
+  local gcp_creds_path=""
+  if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+    gcp_creds_path="$GOOGLE_APPLICATION_CREDENTIALS"
+  elif [[ -f "$HOME/.config/gcloud/application_default_credentials.json" ]]; then
+    gcp_creds_path="$HOME/.config/gcloud/application_default_credentials.json"
+  fi
+
+  if [[ -n "$gcp_creds_path" && -f "$gcp_creds_path" ]]; then
+    echo "Found GCP credentials at: $gcp_creds_path"
+    local gcp_creds_json
+    gcp_creds_json=$(cat "$gcp_creds_path")
+    export GCP_CREDENTIALS_JSON="$gcp_creds_json"
+    export VERTEX_PROJECT_ID="${ANTHROPIC_VERTEX_PROJECT_ID:-}"
+    export VERTEX_REGION="${CLOUD_ML_REGION:-us-central1}"
+  fi
+
+  # Start VM with Lima
+  limactl start --name="$VM_NAME" "$template_path"
+
+  # Clean up temporary template if created
+  if [[ "$template_path" != "$SCRIPT_DIR/agent-vm.yaml" ]]; then
+    rm -f "$template_path"
+  fi
+
+  echo "✓ VM created successfully: $VM_NAME"
+}
 
 function destroy_vm {
   echo "Destroying VM and all workspaces..."
@@ -11,37 +172,133 @@ function destroy_vm {
   unmount_vm_workspace
 
   # Check if VM exists
-  if ! terraform state list 2>/dev/null | grep -q "libvirt_domain.debian_vm"; then
+  if ! vm_exists; then
     echo "No VM exists."
-    exit 0
+    return 0
   fi
 
-  # Destroy Terraform resources
-  echo "Destroying Terraform resources..."
-  if ! terraform destroy -auto-approve; then
-    echo ""
-    echo "ERROR: terraform destroy failed"
-    echo ""
-    echo "To retry:"
-    echo "  cd vm && terraform destroy -auto-approve"
-    echo ""
-    return 1
+  # Stop and delete VM
+  echo "Stopping and deleting VM..."
+  if vm_is_running; then
+    limactl stop "$VM_NAME" 2>/dev/null || true
   fi
+  limactl delete "$VM_NAME" 2>/dev/null || true
 
   # Clean up mount directory
-  local mount_point="$HOME/.agent-vm-mounts/workspace"
-  if [ -d "$mount_point" ]; then
-    rmdir "$mount_point" 2>/dev/null || true
+  if [ -d "$MOUNT_DIR" ]; then
+    rmdir "$MOUNT_DIR" 2>/dev/null || true
   fi
 
   echo "✓ VM destroyed"
 }
 
+function show_status {
+  echo "VM Status:"
+  echo ""
+
+  if ! vm_exists; then
+    echo "  State: Does not exist"
+    echo ""
+    echo "Create VM with: ./agent-vm start"
+    return 0
+  fi
+
+  if vm_is_running; then
+    echo "  State: Running"
+  else
+    echo "  State: Stopped"
+  fi
+
+  # Get VM info from limactl
+  local vm_info
+  vm_info=$(limactl list --format json 2>/dev/null | grep -A 20 "\"name\":\"$VM_NAME\"" || echo "")
+
+  # Extract resources if available
+  if [[ -n "$vm_info" ]]; then
+    local cpus memory disk
+    cpus=$(echo "$vm_info" | grep -o '"cpus":[0-9]*' | cut -d: -f2 || echo "N/A")
+    memory=$(echo "$vm_info" | grep -o '"memory":[0-9]*' | cut -d: -f2 || echo "N/A")
+    disk=$(echo "$vm_info" | grep -o '"disk":[0-9]*' | cut -d: -f2 || echo "N/A")
+
+    echo "  Resources:"
+    echo "    CPUs: $cpus"
+    if [[ "$memory" != "N/A" ]]; then
+      # Convert bytes to GiB
+      memory_gib=$((memory / 1024 / 1024 / 1024))
+      echo "    Memory: ${memory_gib} GiB"
+    else
+      echo "    Memory: N/A"
+    fi
+    if [[ "$disk" != "N/A" ]]; then
+      # Convert bytes to GiB
+      disk_gib=$((disk / 1024 / 1024 / 1024))
+      echo "    Disk: ${disk_gib} GiB"
+    else
+      echo "    Disk: N/A"
+    fi
+  fi
+
+  echo ""
+
+  # Show SSHFS mount status
+  if mountpoint -q "$MOUNT_DIR" 2>/dev/null; then
+    echo "  SSHFS: Mounted at $MOUNT_DIR"
+  else
+    echo "  SSHFS: Not mounted"
+  fi
+
+  echo ""
+
+  # List workspaces if VM is running
+  if vm_is_running; then
+    echo "Workspaces:"
+    echo ""
+
+    # Wait for SSH to be ready
+    if ! ssh -F "$SSH_CONFIG" -o ConnectTimeout=5 -o BatchMode=yes \
+         "$VM_HOST" "exit" 2>/dev/null; then
+      echo "  (VM is starting, SSH not ready yet)"
+      return 0
+    fi
+
+    printf "  %-30s %-20s %-20s\n" "NAME" "BRANCH" "LAST MODIFIED"
+    printf "  %-30s %-20s %-20s\n" "----" "------" "-------------"
+
+    # Get workspace list
+    local workspace_list
+    workspace_list=$(ssh -F "$SSH_CONFIG" "$VM_HOST" \
+      "ls -lt ~/workspace/ 2>/dev/null | tail -n +2" 2>/dev/null || echo "")
+
+    if [[ -z "$workspace_list" ]]; then
+      echo "  (no workspaces)"
+      return 0
+    fi
+
+    while read -r line; do
+      if [[ -z "$line" ]]; then
+        continue
+      fi
+
+      # Extract name and date from ls -lt output
+      local workspace_name modified_date branch
+      workspace_name=$(echo "$line" | awk '{print $9}')
+      modified_date=$(echo "$line" | awk '{print $6, $7, $8}')
+
+      if [[ -n "$workspace_name" ]]; then
+        # Get current branch
+        branch=$(ssh -F "$SSH_CONFIG" "$VM_HOST" \
+          "cd ~/workspace/$workspace_name 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null" \
+          2>/dev/null || echo "N/A")
+
+        printf "  %-30s %-20s %-20s\n" "$workspace_name" "$branch" "$modified_date"
+      fi
+    done <<< "$workspace_list"
+  fi
+}
+
 function push_branch_to_vm {
-  local vm_ip="$1"
-  local branch_name="$2"
-  local workspace_name="$3"
-  local ssh_key="$SCRIPT_DIR/vm-ssh-key"
+  local branch_name="$1"
+  local workspace_name="$2"
 
   echo "Pushing '$branch_name' to VM workspace '$workspace_name'..."
 
@@ -54,10 +311,10 @@ function push_branch_to_vm {
   fi
 
   # Set up SSH key for git
-  export GIT_SSH_COMMAND="ssh -i $ssh_key -o StrictHostKeyChecking=no"
+  export GIT_SSH_COMMAND="ssh -F $SSH_CONFIG -o StrictHostKeyChecking=no"
 
   # Initialize git repo in VM workspace if needed
-  ssh -i "$ssh_key" -o StrictHostKeyChecking=no "user@$vm_ip" bash -s "$workspace_name" <<'EOF'
+  ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" bash -s "$workspace_name" <<'EOF'
     workspace_name="$1"
     if [ ! -d ~/workspace/$workspace_name/.git ]; then
       mkdir -p ~/workspace/$workspace_name
@@ -69,9 +326,9 @@ function push_branch_to_vm {
 EOF
 
   # Push branch to VM workspace
-  if git push "ssh://user@${vm_ip}/home/user/workspace/$workspace_name" "$branch_name:$branch_name" 2>&1; then
+  if git push "ssh://${VM_HOST}/home/user/workspace/$workspace_name" "$branch_name:$branch_name" 2>&1; then
     # Check out the branch in VM
-    ssh -i "$ssh_key" -o StrictHostKeyChecking=no "user@$vm_ip" \
+    ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
       "cd ~/workspace/$workspace_name && git checkout $branch_name" 2>/dev/null
     echo "✓ Branch '$branch_name' pushed to VM workspace"
   else
@@ -84,24 +341,22 @@ EOF
 }
 
 function fetch_branch_from_vm {
-  local vm_ip="$1"
-  local branch_name="$2"
-  local workspace_name="$3"
-  local ssh_key="$SCRIPT_DIR/vm-ssh-key"
+  local branch_name="$1"
+  local workspace_name="$2"
 
   echo "Fetching '$branch_name' from VM workspace '$workspace_name'..."
 
   cd "$(git rev-parse --show-toplevel)" || exit 1
 
   # Check if workspace exists in VM
-  if ! ssh -i "$ssh_key" -o StrictHostKeyChecking=no "user@$vm_ip" \
+  if ! ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
        "test -d ~/workspace/$workspace_name" 2>/dev/null; then
     echo "Error: Workspace '$workspace_name' does not exist in VM" >&2
     return 1
   fi
 
   # Check for uncommitted changes in VM (warn but continue)
-  if ssh -i "$ssh_key" -o StrictHostKeyChecking=no "user@$vm_ip" \
+  if ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
      "cd ~/workspace/$workspace_name && ! git diff --quiet || ! git diff --cached --quiet" 2>/dev/null; then
     echo ""
     echo "⚠️  WARNING: VM workspace has uncommitted changes"
@@ -111,16 +366,17 @@ function fetch_branch_from_vm {
   fi
 
   # Set up SSH key for git
-  export GIT_SSH_COMMAND="ssh -i $ssh_key -o StrictHostKeyChecking=no"
+  export GIT_SSH_COMMAND="ssh -F $SSH_CONFIG -o StrictHostKeyChecking=no"
 
   # Check if branch is currently checked out
+  local current_branch
   current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 
   # Fetch branch from VM
   if [ "$current_branch" = "$branch_name" ]; then
     # Branch is checked out - use pull to update working tree
     echo "Branch '$branch_name' is currently checked out - using git pull..."
-    if git pull "ssh://user@${vm_ip}/home/user/workspace/$workspace_name" "$branch_name" 2>&1; then
+    if git pull "ssh://${VM_HOST}/home/user/workspace/$workspace_name" "$branch_name" 2>&1; then
       echo ""
       echo "✓ Branch '$branch_name' updated and working tree synchronized"
       echo ""
@@ -134,7 +390,7 @@ function fetch_branch_from_vm {
     fi
   else
     # Branch is not checked out - use fetch to update ref only
-    if git fetch "ssh://user@${vm_ip}/home/user/workspace/$workspace_name" "$branch_name:$branch_name" 2>&1; then
+    if git fetch "ssh://${VM_HOST}/home/user/workspace/$workspace_name" "$branch_name:$branch_name" 2>&1; then
       echo ""
       echo "✓ Branch '$branch_name' updated in main repo"
       echo ""
@@ -152,111 +408,24 @@ function fetch_branch_from_vm {
   unset GIT_SSH_COMMAND
 }
 
-function mount_vm_workspace {
-  local vm_ip="$1"
-  local ssh_key="$SCRIPT_DIR/vm-ssh-key"
-  local mount_point="$HOME/.agent-vm-mounts/workspace"
+function install_precommit_hooks {
+  local workspace_name="$1"
 
-  mkdir -p "$mount_point"
+  # Check if .pre-commit-config.yaml exists in workspace
+  if ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
+     "test -f ~/workspace/$workspace_name/.pre-commit-config.yaml" 2>/dev/null; then
 
-  # Check if already mounted
-  if mountpoint -q "$mount_point" 2>/dev/null; then
-    return 0
-  fi
-
-  echo "Mounting VM workspace via SSHFS..."
-
-  # Check if sshfs is available
-  if ! command -v sshfs >/dev/null 2>&1; then
-    echo ""
-    echo "⚠️  WARNING: sshfs not installed"
-    echo ""
-    echo "Install it to edit files on your host:"
-    echo "  Debian/Ubuntu: sudo apt-get install sshfs"
-    echo "  macOS: brew install sshfs"
-    echo ""
-    echo "Continuing without SSHFS mount..."
-    return 1
-  fi
-
-  # Mount with absolute ssh key path to avoid issues with relative paths
-  local ssh_key_abs
-  ssh_key_abs="$(cd "$(dirname "$ssh_key")" && pwd)/$(basename "$ssh_key")"
-
-  if sshfs -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        -o reconnect \
-        -o ServerAliveInterval=15 \
-        -o ServerAliveCountMax=3 \
-        -o follow_symlinks \
-        -o IdentityFile="$ssh_key_abs" \
-        "user@${vm_ip}:/home/user/workspace" "$mount_point"; then
-    echo "✓ Mounted at: $mount_point"
-    return 0
-  else
-    echo "⚠️  Could not mount via SSHFS (continuing without mount)"
-    echo "   Mount point: $mount_point"
-    echo "   VM IP: $vm_ip"
-    echo "   SSH key: $ssh_key_abs"
-    return 1
-  fi
-}
-
-function unmount_vm_workspace {
-  local mount_point="$HOME/.agent-vm-mounts/workspace"
-
-  if mountpoint -q "$mount_point" 2>/dev/null; then
-    echo "Unmounting: $mount_point"
-    fusermount -u "$mount_point" 2>/dev/null || umount "$mount_point" 2>/dev/null
-    sleep 1
-  fi
-}
-
-function list_workspaces {
-  echo "Listing workspaces in agent-vm..."
-  echo ""
-
-  # Ensure VM is running
-  if ! terraform state list 2>/dev/null | grep -q "libvirt_domain.debian_vm"; then
-    echo "No VM exists. Create one with: ./agent-vm -b <branch>"
-    return 0
-  fi
-
-  # Get VM details
-  VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
-  VM_USER=$(terraform output -raw default_user 2>/dev/null)
-
-  # Check VM is reachable (increased timeout for loaded VMs)
-  if ! ssh -i "$SCRIPT_DIR/vm-ssh-key" -o ConnectTimeout=10 -o BatchMode=yes \
-       -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null < /dev/null; then
-    echo "VM exists but is not running. Start it with: ./agent-vm -b <branch>"
-    return 0
-  fi
-
-  printf "%-30s %-20s\n" "WORKSPACE" "LAST MODIFIED"
-  printf "%-30s %-20s\n" "---------" "-------------"
-
-  # Capture SSH output first to debug issues
-  workspace_list=$(ssh -i "$SCRIPT_DIR/vm-ssh-key" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-    "ls -lt ~/workspace/ 2>/dev/null | tail -n +2" 2>&1 < /dev/null)
-
-  # Debug: uncomment to see raw output
-  # echo "DEBUG: workspace_list=$workspace_list" >&2
-
-  # Process the list
-  while read -r line; do
-    if [[ -z "$line" ]]; then
-      continue
+    # Install pre-commit hooks
+    if ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
+       "cd ~/workspace/$workspace_name && pre-commit install" 2>/dev/null; then
+      echo "✓ Pre-commit hooks installed"
+    else
+      echo ""
+      echo "⚠️  WARNING: Could not install pre-commit hooks"
+      echo "You can install them manually: cd ~/workspace/$workspace_name && pre-commit install"
+      echo ""
     fi
-    # Extract name and date from ls -lt output
-    workspace_name=$(echo "$line" | awk '{print $9}')
-    modified_date=$(echo "$line" | awk '{print $6, $7, $8}')
-    if [[ -n "$workspace_name" ]]; then
-      printf "%-30s %-20s\n" "$workspace_name" "$modified_date"
-    fi
-  done <<< "$workspace_list"
-
-  echo ""
+  fi
 }
 
 function clean_workspace {
@@ -264,107 +433,91 @@ function clean_workspace {
   local force="${2:-false}"
 
   if [[ -z "$branch_name" ]]; then
-    echo "Error: Branch name required for --clean" >&2
+    echo "Error: Branch name required for clean" >&2
     exit 1
   fi
 
   # Get repo name
   if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
-    echo "Error: Must be in a git repository to use -b option" >&2
+    echo "Error: Must be in a git repository to use branch operations" >&2
     exit 1
   fi
 
-  REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
-  WORKSPACE_NAME="${REPO_NAME}-${branch_name}"
+  local repo_name workspace_name
+  repo_name="$(basename "$(git rev-parse --show-toplevel)")"
+  workspace_name="${repo_name}-${branch_name}"
 
   # Ensure VM is running
   ensure_vm_running
 
-  VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
-  VM_USER=$(terraform output -raw default_user 2>/dev/null)
-  SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
-
   # Check if workspace exists
-  if ! ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-       "test -d ~/workspace/$WORKSPACE_NAME" 2>/dev/null < /dev/null; then
-    echo "Workspace does not exist: $WORKSPACE_NAME"
-    exit 0
+  if ! ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
+       "test -d ~/workspace/$workspace_name" 2>/dev/null; then
+    echo "Workspace does not exist: $workspace_name"
+    return 0
   fi
 
   # Check for uncommitted changes
-  if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-     "cd ~/workspace/$WORKSPACE_NAME && ! git diff --quiet || ! git diff --cached --quiet" 2>/dev/null < /dev/null; then
+  if ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
+     "cd ~/workspace/$workspace_name && ! git diff --quiet || ! git diff --cached --quiet" 2>/dev/null; then
     echo ""
-    echo "⚠️  WARNING: Workspace has uncommitted changes: $WORKSPACE_NAME"
+    echo "⚠️  WARNING: Workspace has uncommitted changes: $workspace_name"
     echo ""
   fi
 
   # Confirm deletion unless force
   if [[ "$force" != "true" ]]; then
-    read -r -p "Remove workspace $WORKSPACE_NAME? (y/N) " response
+    read -r -p "Remove workspace $workspace_name? (y/N) " response
     if [[ ! "$response" =~ ^[Yy]$ ]]; then
       echo "Cancelled."
-      exit 0
+      return 0
     fi
   fi
 
-  echo "Removing workspace: $WORKSPACE_NAME"
-  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-    "rm -rf ~/workspace/$WORKSPACE_NAME"
-  echo "✓ Workspace removed: $WORKSPACE_NAME"
+  echo "Removing workspace: $workspace_name"
+  ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
+    "rm -rf ~/workspace/$workspace_name"
+  echo "✓ Workspace removed: $workspace_name"
 }
 
 function clean_all_workspaces {
   # Ensure VM is running
   ensure_vm_running
 
-  VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
-  VM_USER=$(terraform output -raw default_user 2>/dev/null)
-  SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
-
-  # List workspaces
+  # Show current workspaces
   echo "Current workspaces:"
-  list_workspaces
+  show_status
+  echo ""
 
   # Confirm deletion
   read -r -p "Remove ALL workspaces from VM? (y/N) " response
   if [[ ! "$response" =~ ^[Yy]$ ]]; then
     echo "Cancelled."
-    exit 0
+    return 0
   fi
 
   echo "Removing all workspaces..."
-  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
+  ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
     "rm -rf ~/workspace/*"
   echo "✓ All workspaces removed"
 }
 
 function ensure_vm_running {
-  # Check if Terraform state exists
-  if ! terraform state list 2>/dev/null | grep -q "libvirt_domain.debian_vm"; then
-    echo "Error: No VM exists. Create one with: ./agent-vm -b <branch>" >&2
+  if ! vm_exists; then
+    echo "Error: No VM exists. Create one with: ./agent-vm start" >&2
     exit 1
   fi
 
-  # Check if VM is reachable
-  VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
-  VM_USER=$(terraform output -raw default_user 2>/dev/null)
+  if ! vm_is_running; then
+    echo "VM is stopped. Starting..."
+    limactl start "$VM_NAME"
 
-  if ! ssh -i "$SCRIPT_DIR/vm-ssh-key" -o ConnectTimeout=5 -o BatchMode=yes \
-       -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null < /dev/null; then
-    echo "VM exists but is not running. Starting..."
-    terraform apply -auto-approve
-
-    # Re-fetch outputs after apply since VM may have new IP
-    VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
-    VM_USER=$(terraform output -raw default_user 2>/dev/null)
-
-    # Wait for ready (increased timeout for nested VMs where cloud-init may be slower)
+    # Wait for SSH to be ready
     echo "Waiting for VM to be ready..."
     local max_wait=300
     local elapsed=0
-    while ! ssh -i "$SCRIPT_DIR/vm-ssh-key" -o ConnectTimeout=5 -o BatchMode=yes \
-         -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null < /dev/null; do
+    while ! ssh -F "$SSH_CONFIG" -o ConnectTimeout=5 -o BatchMode=yes \
+         "$VM_HOST" "exit" 2>/dev/null; do
       sleep 5
       elapsed=$((elapsed + 5))
       if [[ $elapsed -ge $max_wait ]]; then
@@ -376,75 +529,116 @@ function ensure_vm_running {
   fi
 }
 
-function warn_resource_overrides_ignored {
-  if [[ -n "$MEMORY_OVERRIDE" || -n "$VCPU_OVERRIDE" || -n "$DISK_OVERRIDE" ]]; then
-    echo "WARNING: VM already exists. Resource options ignored."
-    echo "To apply new resources, destroy and recreate:"
-    echo "  agent-vm -b $BRANCH_NAME --destroy"
-    if [[ -n "$MEMORY_OVERRIDE" ]]; then
-      echo "  agent-vm -b $BRANCH_NAME --memory $MEMORY_OVERRIDE"
-    fi
-    if [[ -n "$VCPU_OVERRIDE" ]]; then
-      echo "  agent-vm -b $BRANCH_NAME --vcpu $VCPU_OVERRIDE"
-    fi
-    if [[ -n "$DISK_OVERRIDE" ]]; then
-      echo "  agent-vm -b $BRANCH_NAME --disk $DISK_OVERRIDE"
-    fi
+function connect_to_vm {
+  local branch_name="$1"
+  shift
+  local vm_command=("$@")
+
+  # Ensure VM is running
+  ensure_vm_running
+
+  # Build environment variable exports from common/packages/envvars.txt
+  local env_exports=""
+  local envvars_file="$SCRIPT_DIR/../common/packages/envvars.txt"
+  if [[ -f "$envvars_file" ]]; then
+    while IFS= read -r var || [[ -n "$var" ]]; do
+      # Skip empty lines and comments
+      [[ -z "$var" || "$var" =~ ^# ]] && continue
+      # Only export if variable is set in host environment
+      if [[ -n "${!var:-}" ]]; then
+        # Escape special characters for shell
+        local escaped_value
+        escaped_value=$(printf '%s' "${!var}" | sed "s/'/'\\\\''/g")
+        env_exports+="export $var='$escaped_value'; "
+      fi
+    done < "$envvars_file"
+  fi
+
+  # If no branch specified, connect directly to VM
+  if [[ -z "$branch_name" ]]; then
+    echo "Connecting to VM: $VM_NAME"
     echo ""
-  fi
-}
 
-function install_precommit_hooks {
-  local vm_ip="$1"
-  local workspace_name="$2"
-  local ssh_key="$SCRIPT_DIR/vm-ssh-key"
-
-  # Check if .pre-commit-config.yaml exists in workspace
-  if ssh -i "$ssh_key" -o StrictHostKeyChecking=no "user@$vm_ip" \
-     "test -f ~/workspace/$workspace_name/.pre-commit-config.yaml" 2>/dev/null < /dev/null; then
-
-    # Install pre-commit hooks
-    if ssh -i "$ssh_key" -o StrictHostKeyChecking=no "user@$vm_ip" \
-       "cd ~/workspace/$workspace_name && pre-commit install" 2>/dev/null < /dev/null; then
-      echo "✓ Pre-commit hooks installed"
+    if [[ ${#vm_command[@]} -gt 0 ]]; then
+      ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
+        "${env_exports}cd ~ 2>/dev/null || cd ~; ${vm_command[*]}"
     else
-      echo ""
-      echo "⚠️  WARNING: Could not install pre-commit hooks"
-      echo "You can install them manually: cd ~/workspace/$workspace_name && pre-commit install"
-      echo ""
+      ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
+        -t "${env_exports}cd ~ 2>/dev/null || cd ~; exec bash -l"
     fi
+    return 0
+  fi
+
+  # Get repo name and workspace name
+  if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+    echo "Error: Must be in a git repository to use branch operations" >&2
+    exit 1
+  fi
+
+  local repo_name workspace_name
+  repo_name="$(basename "$(git rev-parse --show-toplevel)")"
+  workspace_name="${repo_name}-${branch_name}"
+
+  # Mount workspace via SSHFS (if not already mounted)
+  mount_vm_workspace || true
+
+  # Check if workspace exists
+  local workspace_exists=false
+  if ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
+     "test -d ~/workspace/$workspace_name" 2>/dev/null; then
+    workspace_exists=true
+  fi
+
+  # If workspace doesn't exist, push branch
+  if [[ "$workspace_exists" == "false" ]]; then
+    echo "Creating new workspace: $workspace_name"
+    push_branch_to_vm "$branch_name" "$workspace_name"
+    install_precommit_hooks "$workspace_name"
+  else
+    echo "Using existing workspace: $workspace_name"
+  fi
+
+  # Connect to VM
+  echo "Connecting to VM workspace: $workspace_name"
+  echo ""
+
+  if [[ ${#vm_command[@]} -gt 0 ]]; then
+    ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
+      "${env_exports}cd ~/workspace/$workspace_name 2>/dev/null || cd ~; ${vm_command[*]}"
+  else
+    ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
+      -t "${env_exports}cd ~/workspace/$workspace_name 2>/dev/null || cd ~; exec bash -l"
   fi
 }
-
 
 function usage {
     cat - <<EOF
-agent-vm: Single VM with multiple workspaces for AI coding agents
+agent-vm: Single VM with multiple workspaces for AI coding agents (Lima-based)
 
-Usage: $0 [options] [-b <branch_name>] [-- command...]
+Usage: $0 <command> [options]
+
+Commands:
+  start [--memory M --vcpu N]     Create/start VM (resource options only at creation)
+  destroy                         Delete VM entirely and all workspaces
+  status                          Show VM state, workspaces, and mounts
+  connect [branch]                Connect to workspace or VM directly (creates if needed)
+  push <branch>                   Push branch from host to VM workspace
+  fetch <branch>                  Fetch branch from VM workspace to host
+  clean <branch>                  Delete specific workspace
+  clean-all                       Delete all workspaces (VM stays running)
 
 Options:
-  -b, --branch <name>         Branch name (required for most operations)
-  --memory <MB>               VM memory in MB (default: 4096, creation only)
-  --vcpu <count>              Virtual CPUs (default: 4, creation only)
-  --disk <size>               Disk size like 60G (default: 40G, creation only)
-  --list                      List all workspaces in VM
-  --fetch                     Fetch changes from VM to host (requires -b)
-  --push                      Force push branch from host to VM (requires -b)
-  --clean                     Remove workspace from VM (requires -b)
-  --clean-all                 Remove all workspaces (VM stays running)
-  --destroy                   Destroy entire VM and all workspaces
-  -h, --help                  Show this help
-
-Arguments:
-  command...                  Optional command to execute in VM
+  --memory <GB>                   VM memory in GB (default: 8, creation only)
+  --vcpu <count>                  Virtual CPUs (default: 4, creation only)
+  -h, --help                      Show this help
 
 Workflow:
-  1. ./agent-vm -b feature-auth       # Create VM, create workspace, mount SSHFS
-  2. Edit files at ~/.agent-vm-mounts/workspace/myrepo-feature-auth/
-  3. Build/test in VM SSH session
-  4. Commit changes in VM
-  5. ./agent-vm -b feature-auth --fetch    # Fetch changes back to host
+  1. ./agent-vm start                         # Create/start VM
+  2. ./agent-vm connect feature-auth          # Create workspace, mount SSHFS
+  3. Edit files at ~/.agent-vm-mounts/workspace/<repo>-<branch>/
+  4. Build/test in VM SSH session
+  5. Commit changes in VM
+  6. ./agent-vm fetch feature-auth            # Fetch changes back to host
 
 File Sharing:
   * VM workspace: ~/workspace/<repo>-<branch>/
@@ -453,19 +647,22 @@ File Sharing:
   * Real-time sync via SSHFS
 
 Examples:
-  $0 -b feature-auth                    # Create/connect to workspace
-  $0 -b feature-auth --fetch            # Fetch VM changes to host
-  $0 -b feature-auth --push             # Push host changes to VM
-  $0 -b feature-auth -- claude          # Run claude directly
-  $0 -b big-build --memory 16384        # Create VM with 16GB RAM
-  $0 --list                             # List all workspaces
-  $0 -b old-feature --clean             # Remove workspace
-  $0 --destroy                          # Destroy VM
+  $0 start                                # Create/start VM
+  $0 start --memory 16 --vcpu 8           # Create VM with 16GB RAM, 8 CPUs
+  $0 status                               # Show VM state and workspaces
+  $0 connect feature-auth                 # Create/connect to workspace
+  $0 connect                              # Connect directly to VM (no workspace)
+  $0 push feature-auth                    # Push host changes to VM
+  $0 fetch feature-auth                   # Fetch VM changes to host
+  $0 connect feature-auth -- claude       # Run claude directly
+  $0 clean old-feature                    # Remove workspace
+  $0 clean-all                            # Remove all workspaces
+  $0 destroy                              # Destroy VM
 
 Storage:
   * SSHFS mount: ~/.agent-vm-mounts/workspace/
-  * Terraform state: vm/.terraform/
-  * SSH key: vm/vm-ssh-key
+  * Lima state: ~/.lima/agent-vm/
+  * SSH config: ~/.lima/agent-vm/ssh.config
 
 Multi-Workspace:
   * Multiple branches in same VM as separate directories
@@ -474,362 +671,154 @@ Multi-Workspace:
 EOF
 }
 
-# Parse command line options
+# Parse command line
+COMMAND=""
 BRANCH_NAME=""
 VM_COMMAND=()
-MEMORY_OVERRIDE=""
-VCPU_OVERRIDE=""
-DISK_OVERRIDE=""
-ACTION=""  # list, fetch, push, clean, clean-all, destroy, or "" for connect
+MEMORY=""
+VCPU=""
 
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -b|--branch)
-            BRANCH_NAME="$2"
-            shift 2
-            ;;
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 1
+fi
+
+# First argument is the command
+COMMAND="$1"
+shift
+
+# Parse remaining arguments based on command
+case "$COMMAND" in
+  start)
+    while [[ $# -gt 0 ]]; do
+      case $1 in
         --memory)
-            MEMORY_OVERRIDE="$2"
-            shift 2
-            ;;
+          MEMORY="$2"
+          shift 2
+          ;;
         --vcpu)
-            VCPU_OVERRIDE="$2"
-            shift 2
-            ;;
-        --disk)
-            DISK_OVERRIDE="$2"
-            shift 2
-            ;;
-        --list)
-            ACTION="list"
-            shift
-            ;;
-        --fetch)
-            ACTION="fetch"
-            shift
-            ;;
-        --push)
-            ACTION="push"
-            shift
-            ;;
-        --clean)
-            ACTION="clean"
-            shift
-            ;;
-        --clean-all)
-            ACTION="clean-all"
-            shift
-            ;;
-        --destroy)
-            ACTION="destroy"
-            shift
-            ;;
+          VCPU="$2"
+          shift 2
+          ;;
         -h|--help)
-            usage
-            exit 0
-            ;;
-        --)
-            shift
-            VM_COMMAND=("$@")
-            break
-            ;;
+          usage
+          exit 0
+          ;;
         *)
-            echo "Error: Unknown option: $1" >&2
-            usage
-            exit 1
-            ;;
-    esac
-done
+          echo "Error: Unknown option for start: $1" >&2
+          usage
+          exit 1
+          ;;
+      esac
+    done
+    start_vm "$MEMORY" "$VCPU"
+    ;;
 
-# Source common functions
-# shellcheck source=vm-common.sh
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/vm-common.sh"
-
-cd "$SCRIPT_DIR" || exit 1
-
-# Handle list action
-if [[ "$ACTION" == "list" ]]; then
-  list_workspaces
-  exit 0
-fi
-
-# Handle destroy action
-if [[ "$ACTION" == "destroy" ]]; then
-  destroy_vm
-  exit 0
-fi
-
-# Handle clean-all action
-if [[ "$ACTION" == "clean-all" ]]; then
-  clean_all_workspaces
-  exit 0
-fi
-
-# Handle clean action
-if [[ "$ACTION" == "clean" ]]; then
-  if [[ -z "$BRANCH_NAME" ]]; then
-    echo "Error: --clean requires -b <branch_name>" >&2
-    exit 1
-  fi
-  clean_workspace "$BRANCH_NAME"
-  exit 0
-fi
-
-# Handle fetch action
-if [[ "$ACTION" == "fetch" ]]; then
-  if [[ -z "$BRANCH_NAME" ]]; then
-    echo "Error: --fetch requires -b <branch_name>" >&2
-    exit 1
-  fi
-
-  if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
-    echo "Error: Must be in a git repository to use --fetch" >&2
-    exit 1
-  fi
-
-  REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
-  WORKSPACE_NAME="${REPO_NAME}-${BRANCH_NAME}"
-
-  # Ensure VM is running
-  ensure_vm_running
-
-  # Get VM IP and user
-  VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
-  VM_USER=$(terraform output -raw default_user 2>/dev/null)
-  SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
-
-  # Check if workspace exists
-  if ! ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-       "test -d ~/workspace/$WORKSPACE_NAME" 2>/dev/null; then
-    echo "Error: Workspace '$WORKSPACE_NAME' does not exist in VM" >&2
-    echo "Create it first: ./agent-vm -b $BRANCH_NAME" >&2
-    exit 1
-  fi
-
-  # Fetch from VM
-  fetch_branch_from_vm "$VM_IP" "$BRANCH_NAME" "$WORKSPACE_NAME"
-
-  exit 0
-fi
-
-# Handle push action
-if [[ "$ACTION" == "push" ]]; then
-  if [[ -z "$BRANCH_NAME" ]]; then
-    echo "Error: --push requires -b <branch_name>" >&2
-    exit 1
-  fi
-
-  if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
-    echo "Error: Must be in a git repository to use --push" >&2
-    exit 1
-  fi
-
-  REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
-  WORKSPACE_NAME="${REPO_NAME}-${BRANCH_NAME}"
-
-  # Ensure VM is running
-  ensure_vm_running
-
-  # Get VM IP
-  VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
-
-  # Push to VM
-  push_branch_to_vm "$VM_IP" "$BRANCH_NAME" "$WORKSPACE_NAME"
-
-  echo "✓ Branch pushed to VM workspace"
-  exit 0
-fi
-
-# For connect action, branch is required
-if [[ -z "$BRANCH_NAME" ]]; then
-  echo "Error: -b <branch> is required" >&2
-  exit 1
-fi
-
-# Determine VM name and workspace name
-if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
-  echo "Error: Must be in a git repository to use -b option" >&2
-  exit 1
-fi
-
-REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
-WORKSPACE_NAME="${REPO_NAME}-${BRANCH_NAME}"
-
-# Detect network subnet (same logic as before for nested VMs)
-if [ -z "$NETWORK_SUBNET" ]; then
-  CURRENT_IP=$(ip -4 addr show | grep -v virbr | grep -oP '(?<=inet\s)192\.168\.\d+\.\d+(?=/)' | head -1 || true)
-
-  if [ -n "$CURRENT_IP" ]; then
-    CURRENT_THIRD_OCTET=$(echo "$CURRENT_IP" | cut -d. -f3)
-
-    if [ "$CURRENT_THIRD_OCTET" -eq 122 ] || [ "$CURRENT_THIRD_OCTET" -eq 123 ]; then
-      NETWORK_SUBNET=200
-      echo "Detected outer VM network: 192.168.$CURRENT_THIRD_OCTET.0/24"
-      echo "Using subnet 192.168.$NETWORK_SUBNET.0/24 for nested VM"
-    else
-      NETWORK_SUBNET=$(( (CURRENT_THIRD_OCTET + 1) % 256 ))
-      echo "Detected outer VM network: 192.168.$CURRENT_THIRD_OCTET.0/24"
-      echo "Using subnet 192.168.$NETWORK_SUBNET.0/24 for nested VM"
+  destroy)
+    if [[ $# -gt 0 ]]; then
+      echo "Error: destroy command takes no arguments" >&2
+      usage
+      exit 1
     fi
-  else
-    NETWORK_SUBNET=123
-  fi
-fi
+    destroy_vm
+    ;;
 
-# Check if VM exists (check for VM domain specifically, not just any terraform resources)
-if terraform state list 2>/dev/null | grep -q "libvirt_domain.debian_vm"; then
-  echo "VM already exists"
+  status)
+    if [[ $# -gt 0 ]]; then
+      echo "Error: status command takes no arguments" >&2
+      usage
+      exit 1
+    fi
+    show_status
+    ;;
 
-  # Warn if resource overrides provided
-  if [[ -n "$MEMORY_OVERRIDE" || -n "$VCPU_OVERRIDE" || -n "$DISK_OVERRIDE" ]]; then
-    echo "WARNING: VM already exists. Resource options ignored."
-    echo "To apply new resources:"
-    echo "  ./agent-vm --destroy"
-    if [[ -n "$MEMORY_OVERRIDE" ]]; then
-      echo "  ./agent-vm -b $BRANCH_NAME --memory $MEMORY_OVERRIDE"
+  connect)
+    # Optional branch name, then optional -- command
+    if [[ $# -gt 0 && "$1" != "--" ]]; then
+      BRANCH_NAME="$1"
+      shift
     fi
-    if [[ -n "$VCPU_OVERRIDE" ]]; then
-      echo "  ./agent-vm -b $BRANCH_NAME --vcpu $VCPU_OVERRIDE"
+
+    if [[ $# -gt 0 && "$1" == "--" ]]; then
+      shift
+      VM_COMMAND=("$@")
+    elif [[ $# -gt 0 ]]; then
+      echo "Error: Unexpected arguments after branch name (use -- before command)" >&2
+      usage
+      exit 1
     fi
-    if [[ -n "$DISK_OVERRIDE" ]]; then
-      echo "  ./agent-vm -b $BRANCH_NAME --disk $DISK_OVERRIDE"
+
+    connect_to_vm "$BRANCH_NAME" "${VM_COMMAND[@]}"
+    ;;
+
+  push)
+    if [[ $# -ne 1 ]]; then
+      echo "Error: push requires exactly one argument: <branch>" >&2
+      usage
+      exit 1
     fi
+    BRANCH_NAME="$1"
+
+    if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+      echo "Error: Must be in a git repository to use push" >&2
+      exit 1
+    fi
+
+    repo_name="$(basename "$(git rev-parse --show-toplevel)")"
+    workspace_name="${repo_name}-${BRANCH_NAME}"
+
+    ensure_vm_running
+    push_branch_to_vm "$BRANCH_NAME" "$workspace_name"
+    ;;
+
+  fetch)
+    if [[ $# -ne 1 ]]; then
+      echo "Error: fetch requires exactly one argument: <branch>" >&2
+      usage
+      exit 1
+    fi
+    BRANCH_NAME="$1"
+
+    if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+      echo "Error: Must be in a git repository to use fetch" >&2
+      exit 1
+    fi
+
+    repo_name="$(basename "$(git rev-parse --show-toplevel)")"
+    workspace_name="${repo_name}-${BRANCH_NAME}"
+
+    ensure_vm_running
+    fetch_branch_from_vm "$BRANCH_NAME" "$workspace_name"
+    ;;
+
+  clean)
+    if [[ $# -ne 1 ]]; then
+      echo "Error: clean requires exactly one argument: <branch>" >&2
+      usage
+      exit 1
+    fi
+    BRANCH_NAME="$1"
+    clean_workspace "$BRANCH_NAME"
+    ;;
+
+  clean-all)
+    if [[ $# -gt 0 ]]; then
+      echo "Error: clean-all takes no arguments" >&2
+      usage
+      exit 1
+    fi
+    clean_all_workspaces
+    ;;
+
+  -h|--help)
+    usage
+    exit 0
+    ;;
+
+  *)
+    echo "Error: Unknown command: $COMMAND" >&2
     echo ""
-  fi
-
-  # Ensure VM is running
-  ensure_vm_running
-else
-  echo "Creating new VM: agent-vm"
-
-  # Build terraform variables
-  TERRAFORM_VARS=(
-    -var="vm_name=agent-vm"
-    -var="vm_hostname=agent-vm"
-    -var="network_subnet_third_octet=$NETWORK_SUBNET"
-    -var="user_uid=$(id -u)"
-    -var="user_gid=$(id -g)"
-  )
-
-  # Add resource overrides if provided
-  if [[ -n "$MEMORY_OVERRIDE" ]]; then
-    TERRAFORM_VARS+=(-var="vm_memory=$MEMORY_OVERRIDE")
-  fi
-  if [[ -n "$VCPU_OVERRIDE" ]]; then
-    TERRAFORM_VARS+=(-var="vm_vcpu=$VCPU_OVERRIDE")
-  fi
-  if [[ -n "$DISK_OVERRIDE" ]]; then
-    DISK_BYTES=$(numfmt --from=iec "$DISK_OVERRIDE")
-    TERRAFORM_VARS+=(-var="vm_disk_size=$DISK_BYTES")
-  fi
-
-  # Add GCP credentials if available
-  GCP_CREDS_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
-  if [[ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then
-    GCP_CREDS_PATH="$GOOGLE_APPLICATION_CREDENTIALS"
-  else
-    GCP_CREDS_PATH="$GCP_CREDS_DEFAULT"
-  fi
-
-  if [[ -f "$GCP_CREDS_PATH" ]]; then
-    echo "Injecting GCP credentials from: $GCP_CREDS_PATH"
-    TERRAFORM_VARS+=(-var="gcp_service_account_key_path=$GCP_CREDS_PATH")
-
-    if [[ -n "$ANTHROPIC_VERTEX_PROJECT_ID" ]]; then
-      TERRAFORM_VARS+=(-var="vertex_project_id=$ANTHROPIC_VERTEX_PROJECT_ID")
-    fi
-    if [[ -n "$CLOUD_ML_REGION" ]]; then
-      TERRAFORM_VARS+=(-var="vertex_region=$CLOUD_ML_REGION")
-    fi
-  fi
-
-  # Initialize terraform if needed
-  if [[ ! -d ".terraform" ]] || [[ ! -f ".terraform.lock.hcl" ]]; then
-    echo "Initializing Terraform..."
-    terraform init
-  fi
-
-  # Apply terraform
-  echo "Provisioning VM with Terraform..."
-  terraform apply -auto-approve "${TERRAFORM_VARS[@]}"
-
-  echo "VM created successfully: agent-vm"
-fi
-
-# Get VM IP and user
-VM_IP=$(terraform output -raw vm_ip 2>/dev/null)
-VM_USER=$(terraform output -raw default_user 2>/dev/null)
-SSH_KEY="$SCRIPT_DIR/vm-ssh-key"
-
-# Remove old SSH key from known_hosts
-ssh-keygen -R "$VM_IP" 2>/dev/null || true
-
-# Wait for VM to be ready
-echo "Waiting for VM to be ready..."
-MAX_WAIT=300
-ELAPSED=0
-while ! ssh -i "$SSH_KEY" -o ConnectTimeout=5 -o BatchMode=yes \
-     -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" "exit" 2>/dev/null < /dev/null; do
-  sleep 5
-  ELAPSED=$((ELAPSED + 5))
-  if [[ $ELAPSED -ge $MAX_WAIT ]]; then
-    echo "ERROR: VM failed to start within 5 minutes" >&2
+    usage
     exit 1
-  fi
-done
-
-echo "✓ VM is ready"
-
-# Mount workspace via SSHFS (if not already mounted)
-mount_vm_workspace "$VM_IP" || true
-
-# Check if workspace directory exists in VM
-WORKSPACE_EXISTS=false
-if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-   "test -d ~/workspace/$WORKSPACE_NAME" 2>/dev/null; then
-  WORKSPACE_EXISTS=true
-fi
-
-# If workspace doesn't exist or --push flag provided, push branch
-if [[ "$WORKSPACE_EXISTS" == "false" ]]; then
-  echo "Creating new workspace: $WORKSPACE_NAME"
-  push_branch_to_vm "$VM_IP" "$BRANCH_NAME" "$WORKSPACE_NAME"
-  install_precommit_hooks "$VM_IP" "$WORKSPACE_NAME"
-elif [[ "$ACTION" == "push" ]]; then
-  # Already handled in action handlers above, but this shouldn't happen
-  push_branch_to_vm "$VM_IP" "$BRANCH_NAME" "$WORKSPACE_NAME"
-else
-  echo "Using existing workspace: $WORKSPACE_NAME"
-fi
-
-# Build environment variable exports from common/packages/envvars.txt
-ENV_EXPORTS=""
-SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
-ENVVARS_FILE="$SCRIPT_DIR/../common/packages/envvars.txt"
-if [[ -f "$ENVVARS_FILE" ]]; then
-  while IFS= read -r var || [[ -n "$var" ]]; do
-    # Skip empty lines and comments
-    [[ -z "$var" || "$var" =~ ^# ]] && continue
-    # Only export if variable is set in host environment
-    if [[ -n "${!var:-}" ]]; then
-      # Escape special characters for shell
-      escaped_value=$(printf '%s' "${!var}" | sed "s/'/'\\\\''/g")
-      ENV_EXPORTS+="export $var='$escaped_value'; "
-    fi
-  done < "$ENVVARS_FILE"
-fi
-
-# Connect to VM
-echo "Connecting to VM workspace: $WORKSPACE_NAME (IP: $VM_IP)"
-echo ""
-
-if [[ ${#VM_COMMAND[@]} -gt 0 ]]; then
-  # Execute command and exit
-  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-    "${ENV_EXPORTS}cd ~/workspace/$WORKSPACE_NAME 2>/dev/null || cd ~; ${VM_COMMAND[*]}"
-else
-  # Interactive session
-  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$VM_USER@$VM_IP" \
-    -t "${ENV_EXPORTS}cd ~/workspace/$WORKSPACE_NAME 2>/dev/null || cd ~; exec bash -l"
-fi
+    ;;
+esac
