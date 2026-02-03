@@ -81,6 +81,11 @@ info "VM-specific packages installed"
 # ==============================================================================
 info "Installing Lima for nested VM support..."
 
+# Verify curl is available (required for fetching Lima)
+if ! command -v curl > /dev/null 2>&1; then
+    error "curl not found - required for Lima installation"
+fi
+
 # Get latest Lima version from GitHub
 LIMA_VERSION=$(curl -fsSL https://api.github.com/repos/lima-vm/lima/releases/latest | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
 
