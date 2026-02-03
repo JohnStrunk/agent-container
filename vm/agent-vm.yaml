@@ -61,5 +61,7 @@ video:
   display: "none"
 
 # Network (default user-mode networking)
-networks:
-  - lima: shared
+# Note: Empty networks list uses Lima's default user-mode networking
+# The "lima: shared" option is macOS-only, so we omit it for
+# cross-platform compatibility
+networks: []
