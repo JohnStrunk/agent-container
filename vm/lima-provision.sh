@@ -95,10 +95,8 @@ VM_PACKAGES=(
 # Read NPM packages (filter comments and blank lines)
 mapfile -t NPM_PACKAGES < <(grep -v '^#' /tmp/npm-packages.txt | grep -v '^$')
 
-# Python packages
-PYTHON_PACKAGES=(
-    "pre-commit"
-)
+# Read Python packages (filter comments and blank lines)
+mapfile -t PYTHON_PACKAGES < <(grep -v '^#' /tmp/python-packages.txt | grep -v '^$')
 
 # ==============================================================================
 # 1. Install system packages
