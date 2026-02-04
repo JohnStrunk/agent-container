@@ -50,9 +50,11 @@ See design: `docs/plans/2026-01-05-integration-tests-design.md`
 
 ## Common Resources
 
-Both approaches share resources from `common/`:
+Both approaches share resources from `common/` - this is the **single
+source of truth** for configuration:
 
-- `common/homedir/` - Configuration files deployed to user home directory
+- `common/homedir/` - Configuration files deployed to user home
+  directory
   - `.claude.json` - Claude Code settings
   - `.gitconfig` - Git configuration
   - `.claude/settings.json` - Claude settings
@@ -61,7 +63,14 @@ Both approaches share resources from `common/`:
   - `apt-packages.txt` - Debian packages
   - `npm-packages.txt` - Node.js packages
   - `python-packages.txt` - Python packages
-  - `versions.txt` - Version numbers for tools
+  - `versions.txt` - Version numbers for tools (Go, hadolint)
+  - `envvars.txt` - Environment variables to pass through
+- `common/scripts/` - Shared installation scripts
+  - `install-tools.sh` - Claude Code and other tools
+
+Any changes to packages, versions, or configuration should be made in
+`common/` and will automatically apply to both container and VM
+approaches.
 
 ## General Guidelines
 
