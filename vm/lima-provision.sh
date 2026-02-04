@@ -17,9 +17,9 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # Get Lima user dynamically
-# Lima creates a user with the same name as the host user
-# We can find it by looking for the user with UID >= 1000 (non-system user)
-LIMA_USER=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 { print $1; exit }')
+# Lima creates a user matching the host user
+# Find the user with a real home directory (not /nonexistent or /run/*)
+LIMA_USER=$(getent passwd | awk -F: '$6 ~ /^\/home\// && $7 !~ /nologin|false/ { print $1; exit }')
 
 if [ -z "$LIMA_USER" ]; then
     error "Could not detect Lima user (no non-system user found)"
