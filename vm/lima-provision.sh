@@ -28,6 +28,41 @@ fi
 info "Provisioning VM for user: $LIMA_USER"
 
 # ==============================================================================
+# Verify file availability (files copied via mode:data in agent-vm.yaml)
+# ==============================================================================
+info "Verifying files copied via Lima mode:data..."
+
+# List files we expect to find in /tmp
+expected_files=(
+    "/tmp/apt-packages.txt"
+    "/tmp/npm-packages.txt"
+    "/tmp/python-packages.txt"
+    "/tmp/versions.txt"
+    "/tmp/envvars.txt"
+    "/tmp/install-tools.sh"
+    "/tmp/homedir/.claude.json"
+    "/tmp/homedir/.gitconfig"
+    "/tmp/homedir/.claude/settings.json"
+    "/tmp/homedir/.local/bin/start-claude"
+)
+
+missing_count=0
+for file in "${expected_files[@]}"; do
+    if [ -e "$file" ]; then
+        info "  ✓ Found: $file"
+    else
+        echo "[ERROR]   ✗ Missing: $file" >&2
+        missing_count=$((missing_count + 1))
+    fi
+done
+
+if [ $missing_count -gt 0 ]; then
+    error "Missing $missing_count expected file(s). Lima mode:data copy failed."
+fi
+
+info "All expected files verified in /tmp/"
+
+# ==============================================================================
 # Package lists (embedded from common/packages/*.txt)
 # ==============================================================================
 

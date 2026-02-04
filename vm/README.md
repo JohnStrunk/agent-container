@@ -397,6 +397,44 @@ automatically create it from current HEAD:
 ./agent-vm connect new-feature
 ```
 
+## Homedir Configuration Management
+
+### Tarball Approach
+
+The VM uses a tarball (`homedir.tar.gz`) to deploy configuration files from
+`../common/homedir/` because Lima's `mode: data` doesn't fully support
+directories with hidden files (dotfiles).
+
+**Why use a tarball:**
+
+- Lima's `mode: data` can copy individual files but struggles with nested
+  directory structures
+- Hidden files (`.claude.json`, `.gitconfig`, etc.) need special handling
+- Tarball preserves file permissions and directory structure
+- Single atomic operation for entire config tree
+
+**Regenerating the tarball:**
+
+After modifying files in `../common/homedir/`, regenerate the tarball:
+
+```bash
+cd /home/jstrunk.linux/workspace/agent-container-fix-lima/vm
+tar -czf homedir.tar.gz -C ../common/homedir .
+```
+
+**What gets deployed:**
+
+- `.claude.json` - Claude Code settings
+- `.gitconfig` - Git configuration
+- `.claude/settings.json` - Claude settings
+- `.local/bin/start-claude` - Helper script
+
+**Extraction verification:**
+
+The provisioning script verifies extraction succeeded by checking for
+`.claude.json` as a sentinel file. If this file is missing after extraction,
+provisioning fails with a clear error message.
+
 ## File Structure
 
 ```text
@@ -406,6 +444,7 @@ vm/
 ├── TROUBLESHOOTING.md     # Troubleshooting guide
 ├── agent-vm.yaml          # Lima VM template
 ├── lima-provision.sh      # VM provisioning script
+├── homedir.tar.gz         # Tarball of ../common/homedir/ (regenerate after changes)
 └── agent-vm               # CLI wrapper script
 
 ../common/
