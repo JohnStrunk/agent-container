@@ -150,10 +150,12 @@ done
 # ==============================================================================
 info "Installing additional tools..."
 
-# Install Go
-GO_VERSION="1.23.5"
-info "Installing Go $GO_VERSION..."
-curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -C /usr/local -xzf -
+# Install Go (version from common/packages/versions.txt)
+info "Installing Go $GOLANG_VERSION..."
+if [ -z "$GOLANG_VERSION" ]; then
+    error "GOLANG_VERSION not set (should be sourced from versions.txt)"
+fi
+curl -fsSL "https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz" | tar -C /usr/local -xzf -
 
 # Configure Go PATH and user local bin
 mkdir -p /etc/profile.d
