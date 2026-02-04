@@ -254,10 +254,10 @@ generate_test_command() {
 #!/bin/bash
 set -e -o pipefail
 
-# Source AI agent environment variables if they exist
-if [ -f /etc/profile.d/ai-agent-env.sh ]; then
-    source /etc/profile.d/ai-agent-env.sh
-fi
+# Source profile.d scripts to get PATH and environment
+for script in /etc/profile.d/*.sh; do
+    [ -r "$script" ] && source "$script"
+done
 
 echo "[Test] Sending prompt to Claude Code..."
 
@@ -527,8 +527,8 @@ chmod +x /tmp/test-claude.sh
 
     # Test 11: Test git fetch operation
     log "Test 11: Testing git fetch from VM workspace..."
-    # Make a change in VM
-    if ! ./agent-vm connect "$test_branch_1" -- bash -c "echo 'VM change' >> test-vm-change.txt && git add test-vm-change.txt && git commit -m 'VM test commit'"; then
+    # Make a change in VM (pre-commit hooks may modify files, so we commit twice if needed)
+    if ! ./agent-vm connect "$test_branch_1" -- bash -c "echo 'VM change' >> test-vm-change.txt && git add test-vm-change.txt && git commit -m 'VM test commit' || (git add test-vm-change.txt && git commit -m 'VM test commit')"; then
         log_error "Failed to make commit in VM"
         return "$EXIT_TEST_FAILED"
     fi
@@ -612,7 +612,7 @@ chmod +x /tmp/test-claude.sh
     # Create a test workspace
     ./agent-vm connect "$test_branch_1" -- echo "Test workspace" >/dev/null 2>&1
     # Clean it
-    if ! echo "y" | ./agent-vm clean "$test_branch_1" 2>&1; then
+    if ! ./agent-vm clean -f "$test_branch_1" 2>&1; then
         log_error "Failed to clean workspace"
         return "$EXIT_TEST_FAILED"
     fi
@@ -629,7 +629,7 @@ chmod +x /tmp/test-claude.sh
     ./agent-vm connect "$test_branch_1" -- echo "Test workspace 1" >/dev/null 2>&1
     ./agent-vm connect "$test_branch_2" -- echo "Test workspace 2" >/dev/null 2>&1
     # Clean all
-    if ! echo "y" | ./agent-vm clean-all 2>&1; then
+    if ! ./agent-vm clean-all -f 2>&1; then
         log_error "Failed to clean all workspaces"
         return "$EXIT_TEST_FAILED"
     fi

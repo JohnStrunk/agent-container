@@ -43,6 +43,16 @@ provision:
       # Create workspace directory
       mkdir -p ~/workspace
 
+      # Install Claude Code (must run as user, not root)
+      echo "[INFO] Installing Claude Code..."
+      curl -fsSL https://claude.ai/install.sh | bash
+
+      # Add ~/.local/bin to PATH in bashrc (idempotent)
+      path_export='export PATH="$HOME/.local/bin:$PATH"'
+      if ! grep -q "$path_export" ~/.bashrc 2>/dev/null; then
+        echo "$path_export" >> ~/.bashrc
+      fi
+
       # Set default directory in bashrc (idempotent)
       if ! grep -q "cd ~/workspace" ~/.bashrc 2>/dev/null; then
         echo "cd ~/workspace" >> ~/.bashrc

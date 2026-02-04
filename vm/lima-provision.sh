@@ -115,12 +115,18 @@ GO_VERSION="1.23.5"
 info "Installing Go $GO_VERSION..."
 curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -C /usr/local -xzf -
 
-# Configure Go PATH
+# Configure Go PATH and user local bin
 mkdir -p /etc/profile.d
 cat > /etc/profile.d/go-path.sh <<'EOF'
 export PATH="/usr/local/go/bin:$PATH"
 EOF
 chmod 644 /etc/profile.d/go-path.sh
+
+# Add ~/.local/bin to PATH for all users (for Claude Code and other user tools)
+cat > /etc/profile.d/user-local-bin.sh <<'EOF'
+export PATH="$HOME/.local/bin:$PATH"
+EOF
+chmod 644 /etc/profile.d/user-local-bin.sh
 
 # Install hadolint
 HADOLINT_VERSION="2.12.0"
@@ -128,16 +134,8 @@ info "Installing hadolint $HADOLINT_VERSION..."
 curl -fsSL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint
 chmod +x /usr/local/bin/hadolint
 
-# Install Claude Code (fetch latest version)
-CLAUDE_VERSION=$(curl -fsSL https://api.github.com/repos/anthropics/claude-code/releases/latest | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
-if [ -z "$CLAUDE_VERSION" ]; then
-    error "Failed to fetch Claude Code version from GitHub"
-fi
-
-info "Installing Claude Code $CLAUDE_VERSION..."
-curl -fsSL "https://github.com/anthropics/claude-code/releases/download/v${CLAUDE_VERSION}/claude-code_${CLAUDE_VERSION}_amd64.deb" -o /tmp/claude-code.deb
-dpkg -i /tmp/claude-code.deb
-rm /tmp/claude-code.deb
+# Note: Claude Code installation moved to user-level provision in agent-vm.yaml
+# to ensure it installs to the user's ~/.local/bin
 
 # ==============================================================================
 # 6. Copy homedir configuration files
@@ -199,6 +197,12 @@ info "Home directory configuration complete"
 # 7. Inject GCP credentials if provided
 # ==============================================================================
 info "Checking for GCP credentials..."
+
+# Source GCP environment if it was injected via cloud-init
+if [ -f /tmp/gcp-env.sh ]; then
+    # shellcheck source=/dev/null
+    source /tmp/gcp-env.sh
+fi
 
 if [ -n "$GCP_CREDENTIALS_JSON" ]; then
     info "Injecting GCP credentials..."

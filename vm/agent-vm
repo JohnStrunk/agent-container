@@ -34,6 +34,11 @@ function vm_is_running {
   limactl list --format json 2>/dev/null | grep "\"name\":\"$VM_NAME\"" | grep -q "\"status\":\"Running\""
 }
 
+function get_vm_home {
+  # Get the actual home directory of the Lima user in the VM
+  ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" 'echo $HOME' 2>/dev/null
+}
+
 function unmount_vm_workspace {
   if mountpoint -q "$MOUNT_DIR" 2>/dev/null; then
     echo "Unmounting: $MOUNT_DIR"
@@ -71,7 +76,7 @@ function mount_vm_workspace {
         -o ServerAliveInterval=15 \
         -o ServerAliveCountMax=3 \
         -o follow_symlinks \
-        "${VM_HOST}:/home/user/workspace" "$MOUNT_DIR"; then
+        "${VM_HOST}:workspace" "$MOUNT_DIR"; then
     echo "✓ Mounted at: $MOUNT_DIR"
     return 0
   else
@@ -117,18 +122,63 @@ function start_vm {
 
   echo "Creating new VM: $VM_NAME"
 
-  # Handle resource overrides
-  if [[ -n "$memory" || -n "$vcpu" ]]; then
-    # Create temporary template with overrides
-    local temp_template
-    temp_template=$(mktemp)
+  # Detect GCP credentials for provisioning
+  local gcp_creds_path=""
+  local vertex_project_id="${ANTHROPIC_VERTEX_PROJECT_ID:-}"
+  local vertex_region="${CLOUD_ML_REGION:-us-central1}"
+
+  if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+    gcp_creds_path="$GOOGLE_APPLICATION_CREDENTIALS"
+  elif [[ -f "$HOME/.config/gcloud/application_default_credentials.json" ]]; then
+    gcp_creds_path="$HOME/.config/gcloud/application_default_credentials.json"
+  fi
+
+  local gcp_creds_json=""
+
+  if [[ -n "$gcp_creds_path" && -f "$gcp_creds_path" ]]; then
+    echo "Found GCP credentials at: $gcp_creds_path"
+    # Read credentials and escape for embedding in YAML
+    gcp_creds_json=$(jq -c '.' < "$gcp_creds_path")
+  fi
+
+  # Create temporary template if resource overrides or GCP credentials are present
+  if [[ -n "$memory" || -n "$vcpu" || -n "$gcp_creds_json" ]]; then
+    # Create temporary template in same directory as original (so file: references work)
+    local temp_template="$SCRIPT_DIR/.agent-vm-temp-$$.yaml"
     cp "$template_path" "$temp_template"
 
+    # Apply resource overrides
     if [[ -n "$memory" ]]; then
       sed -i.bak "s/^memory:.*/memory: \"${memory}GiB\"/" "$temp_template"
     fi
     if [[ -n "$vcpu" ]]; then
       sed -i.bak "s/^cpus:.*/cpus: $vcpu/" "$temp_template"
+    fi
+
+    # Inject GCP credentials as inline provision script before main provision
+    if [[ -n "$gcp_creds_json" ]]; then
+      # Escape single quotes in JSON for embedding in shell script
+      local escaped_creds="${gcp_creds_json//\'/\'\\\'\'}"
+
+      # Create provision script that sets environment variables
+      cat > "$SCRIPT_DIR/gcp-creds-provision-$$.sh" <<GCPEOF
+#!/bin/bash
+set -e
+# GCP credentials injected by agent-vm
+mkdir -p /tmp
+cat > /tmp/gcp-env.sh <<'EOF'
+#!/bin/bash
+export GCP_CREDENTIALS_JSON='${escaped_creds}'
+export VERTEX_PROJECT_ID="${vertex_project_id}"
+export VERTEX_REGION="${vertex_region}"
+EOF
+chmod 755 /tmp/gcp-env.sh
+GCPEOF
+
+      # Insert reference to this script as first provision step
+      sed -i.bak "/^provision:/a\\
+\\  - mode: system\\
+\\    file: gcp-creds-provision-$$.sh" "$temp_template"
     fi
 
     # Clean up backup files
@@ -137,30 +187,15 @@ function start_vm {
     template_path="$temp_template"
   fi
 
-  # Detect and export GCP credentials for provisioning
-  local gcp_creds_path=""
-  if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
-    gcp_creds_path="$GOOGLE_APPLICATION_CREDENTIALS"
-  elif [[ -f "$HOME/.config/gcloud/application_default_credentials.json" ]]; then
-    gcp_creds_path="$HOME/.config/gcloud/application_default_credentials.json"
-  fi
-
-  if [[ -n "$gcp_creds_path" && -f "$gcp_creds_path" ]]; then
-    echo "Found GCP credentials at: $gcp_creds_path"
-    local gcp_creds_json
-    gcp_creds_json=$(cat "$gcp_creds_path")
-    export GCP_CREDENTIALS_JSON="$gcp_creds_json"
-    export VERTEX_PROJECT_ID="${ANTHROPIC_VERTEX_PROJECT_ID:-}"
-    export VERTEX_REGION="${CLOUD_ML_REGION:-us-central1}"
-  fi
-
   # Start VM with Lima
   limactl start --name="$VM_NAME" "$template_path"
 
-  # Clean up temporary template if created
+  # Clean up temporary files
   if [[ "$template_path" != "$SCRIPT_DIR/agent-vm.yaml" ]]; then
     rm -f "$template_path"
   fi
+  # Clean up GCP provision script if it was created
+  rm -f "$SCRIPT_DIR"/gcp-creds-provision-*.sh
 
   echo "✓ VM created successfully: $VM_NAME"
 }
@@ -285,10 +320,10 @@ function show_status {
       modified_date=$(echo "$line" | awk '{print $6, $7, $8}')
 
       if [[ -n "$workspace_name" ]]; then
-        # Get current branch
+        # Get current branch (redirect stdin to prevent consuming while loop input)
         branch=$(ssh -F "$SSH_CONFIG" "$VM_HOST" \
           "cd ~/workspace/$workspace_name 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null" \
-          2>/dev/null || echo "N/A")
+          < /dev/null 2>/dev/null || echo "N/A")
 
         printf "  %-30s %-20s %-20s\n" "$workspace_name" "$branch" "$modified_date"
       fi
@@ -313,6 +348,14 @@ function push_branch_to_vm {
   # Set up SSH key for git
   export GIT_SSH_COMMAND="ssh -F $SSH_CONFIG -o StrictHostKeyChecking=no"
 
+  # Get VM home directory
+  local vm_home
+  vm_home=$(get_vm_home)
+  if [[ -z "$vm_home" ]]; then
+    echo "Error: Could not determine VM home directory" >&2
+    return 1
+  fi
+
   # Initialize git repo in VM workspace if needed
   ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" bash -s "$workspace_name" <<'EOF'
     workspace_name="$1"
@@ -326,7 +369,7 @@ function push_branch_to_vm {
 EOF
 
   # Push branch to VM workspace
-  if git push "ssh://${VM_HOST}/home/user/workspace/$workspace_name" "$branch_name:$branch_name" 2>&1; then
+  if git push "ssh://${VM_HOST}${vm_home}/workspace/$workspace_name" "$branch_name:$branch_name" 2>&1; then
     # Check out the branch in VM
     ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
       "cd ~/workspace/$workspace_name && git checkout $branch_name" 2>/dev/null
@@ -347,6 +390,14 @@ function fetch_branch_from_vm {
   echo "Fetching '$branch_name' from VM workspace '$workspace_name'..."
 
   cd "$(git rev-parse --show-toplevel)" || exit 1
+
+  # Get VM home directory
+  local vm_home
+  vm_home=$(get_vm_home)
+  if [[ -z "$vm_home" ]]; then
+    echo "Error: Could not determine VM home directory" >&2
+    return 1
+  fi
 
   # Check if workspace exists in VM
   if ! ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
@@ -376,7 +427,7 @@ function fetch_branch_from_vm {
   if [ "$current_branch" = "$branch_name" ]; then
     # Branch is checked out - use pull to update working tree
     echo "Branch '$branch_name' is currently checked out - using git pull..."
-    if git pull "ssh://${VM_HOST}/home/user/workspace/$workspace_name" "$branch_name" 2>&1; then
+    if git pull "ssh://${VM_HOST}${vm_home}/workspace/$workspace_name" "$branch_name" 2>&1; then
       echo ""
       echo "✓ Branch '$branch_name' updated and working tree synchronized"
       echo ""
@@ -390,7 +441,7 @@ function fetch_branch_from_vm {
     fi
   else
     # Branch is not checked out - use fetch to update ref only
-    if git fetch "ssh://${VM_HOST}/home/user/workspace/$workspace_name" "$branch_name:$branch_name" 2>&1; then
+    if git fetch "ssh://${VM_HOST}${vm_home}/workspace/$workspace_name" "$branch_name:$branch_name" 2>&1; then
       echo ""
       echo "✓ Branch '$branch_name' updated in main repo"
       echo ""
@@ -481,6 +532,8 @@ function clean_workspace {
 }
 
 function clean_all_workspaces {
+  local force="${1:-false}"
+
   # Ensure VM is running
   ensure_vm_running
 
@@ -489,11 +542,13 @@ function clean_all_workspaces {
   show_status
   echo ""
 
-  # Confirm deletion
-  read -r -p "Remove ALL workspaces from VM? (y/N) " response
-  if [[ ! "$response" =~ ^[Yy]$ ]]; then
-    echo "Cancelled."
-    return 0
+  # Confirm deletion unless force
+  if [[ "$force" != "true" ]]; then
+    read -r -p "Remove ALL workspaces from VM? (y/N) " response
+    if [[ ! "$response" =~ ^[Yy]$ ]]; then
+      echo "Cancelled."
+      return 0
+    fi
   fi
 
   echo "Removing all workspaces..."
@@ -539,6 +594,9 @@ function connect_to_vm {
 
   # Build environment variable exports from common/packages/envvars.txt
   local env_exports=""
+  # Source profile.d scripts to get PATH and other environment settings
+  env_exports+="for script in /etc/profile.d/*.sh; do [ -r \"\$script\" ] && source \"\$script\"; done; "
+
   local envvars_file="$SCRIPT_DIR/../common/packages/envvars.txt"
   if [[ -f "$envvars_file" ]]; then
     while IFS= read -r var || [[ -n "$var" ]]; do
@@ -560,8 +618,11 @@ function connect_to_vm {
     echo ""
 
     if [[ ${#vm_command[@]} -gt 0 ]]; then
+      # Properly quote command arguments
+      local quoted_cmd
+      quoted_cmd=$(printf '%q ' "${vm_command[@]}")
       ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
-        "${env_exports}cd ~ 2>/dev/null || cd ~; ${vm_command[*]}"
+        "${env_exports}cd ~ 2>/dev/null || cd ~; ${quoted_cmd}"
     else
       ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
         -t "${env_exports}cd ~ 2>/dev/null || cd ~; exec bash -l"
@@ -603,8 +664,11 @@ function connect_to_vm {
   echo ""
 
   if [[ ${#vm_command[@]} -gt 0 ]]; then
+    # Properly quote command arguments
+    local quoted_cmd
+    quoted_cmd=$(printf '%q ' "${vm_command[@]}")
     ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
-      "${env_exports}cd ~/workspace/$workspace_name 2>/dev/null || cd ~; ${vm_command[*]}"
+      "${env_exports}cd ~/workspace/$workspace_name 2>/dev/null || cd ~; ${quoted_cmd}"
   else
     ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
       -t "${env_exports}cd ~/workspace/$workspace_name 2>/dev/null || cd ~; exec bash -l"
@@ -802,22 +866,45 @@ case "$COMMAND" in
     ;;
 
   clean)
-    if [[ $# -ne 1 ]]; then
-      echo "Error: clean requires exactly one argument: <branch>" >&2
+    FORCE=false
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        -f|--force)
+          FORCE=true
+          shift
+          ;;
+        *)
+          BRANCH_NAME="$1"
+          shift
+          ;;
+      esac
+    done
+
+    if [[ -z "$BRANCH_NAME" ]]; then
+      echo "Error: clean requires a branch name" >&2
       usage
       exit 1
     fi
-    BRANCH_NAME="$1"
-    clean_workspace "$BRANCH_NAME"
+
+    clean_workspace "$BRANCH_NAME" "$FORCE"
     ;;
 
   clean-all)
-    if [[ $# -gt 0 ]]; then
-      echo "Error: clean-all takes no arguments" >&2
-      usage
-      exit 1
-    fi
-    clean_all_workspaces
+    FORCE=false
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        -f|--force)
+          FORCE=true
+          shift
+          ;;
+        *)
+          echo "Error: Unknown option: $1" >&2
+          usage
+          exit 1
+          ;;
+      esac
+    done
+    clean_all_workspaces "$FORCE"
     ;;
 
   -h|--help)
