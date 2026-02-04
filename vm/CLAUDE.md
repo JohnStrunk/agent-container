@@ -51,6 +51,34 @@ vm/
 - **Development Tools**: Git, Node.js, Python, Go, Docker, Podman,
   Lima (nested)
 
+### Package Management
+
+Package lists are shared between container and VM approaches via
+`common/packages/`:
+
+- `apt-packages.txt` - Debian packages (base utilities)
+- `npm-packages.txt` - Node.js packages (AI agents, tools)
+- `python-packages.txt` - Python packages (pre-commit, poetry, etc.)
+- `versions.txt` - Version pins (Go, hadolint, etc.)
+- `envvars.txt` - Environment variables to pass through
+
+VM-specific packages (docker.io, podman, qemu, etc.) are defined
+separately in `lima-provision.sh` since they're not needed in
+containers.
+
+### Provisioning Architecture
+
+The provisioning script (`lima-provision.sh`) reads configuration from
+`common/` directory:
+
+1. **Package lists** - Read from `common/packages/*.txt` via Lima's
+   `copyToGuest`
+2. **Version pins** - Sourced from `common/packages/versions.txt`
+3. **Homedir configs** - Deployed from `common/homedir/`
+4. **Tool installation** - Uses `common/scripts/install-tools.sh`
+
+This ensures container and VM approaches stay synchronized.
+
 ## Development Workflow
 
 ### Using agent-vm
