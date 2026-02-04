@@ -170,9 +170,11 @@ export PATH="$HOME/.local/bin:$PATH"
 EOF
 chmod 644 /etc/profile.d/user-local-bin.sh
 
-# Install hadolint
-HADOLINT_VERSION="2.12.0"
+# Install hadolint (version from common/packages/versions.txt)
 info "Installing hadolint $HADOLINT_VERSION..."
+if [ -z "$HADOLINT_VERSION" ]; then
+    error "HADOLINT_VERSION not set (should be sourced from versions.txt)"
+fi
 curl -fsSL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint
 chmod +x /usr/local/bin/hadolint
 
