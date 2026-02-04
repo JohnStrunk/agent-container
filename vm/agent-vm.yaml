@@ -30,13 +30,9 @@ portForwards: []
 # Provisioning scripts
 provision:
   # System-level provisioning
+  # Note: Lima reads the file from template directory and embeds it
   - mode: system
-    script: |
-      #!/bin/bash
-      set -e -o pipefail
-
-      # Run the main provisioning script
-      {{.Dir}}/lima-provision.sh
+    file: lima-provision.sh
 
   # User-level setup (runs as default Lima user)
   - mode: user
