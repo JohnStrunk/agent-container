@@ -178,8 +178,10 @@ fi
 curl -fsSL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint
 chmod +x /usr/local/bin/hadolint
 
-# Note: Claude Code installation moved to user-level provision in agent-vm.yaml
-# to ensure it installs to the user's ~/.local/bin
+# Install Claude Code and other common tools
+info "Installing common tools (Claude Code)..."
+chmod +x /tmp/install-tools.sh
+/tmp/install-tools.sh
 
 # ==============================================================================
 # 6. Copy homedir configuration files
