@@ -184,60 +184,41 @@ chmod +x /tmp/install-tools.sh
 /tmp/install-tools.sh
 
 # ==============================================================================
-# 6. Copy homedir configuration files
+# 6. Deploy home directory configuration files
 # ==============================================================================
-info "Setting up user home directory configuration..."
+info "Deploying home directory configuration from common/homedir/..."
 
 USER_HOME=$(getent passwd "$LIMA_USER" | cut -d: -f6)
 if [ -z "$USER_HOME" ] || [ ! -d "$USER_HOME" ]; then
     error "User home directory not found for: $LIMA_USER"
 fi
 
-# Create .claude directory structure
-mkdir -p "$USER_HOME/.claude"
-mkdir -p "$USER_HOME/.local/bin"
+# Verify homedir files were copied to VM
+if [ ! -d /tmp/homedir ]; then
+    error "common/homedir not found at /tmp/homedir"
+fi
 
-# Create .claude.json
-cat > "$USER_HOME/.claude.json" <<'EOF'
-{
-  "defaultSession": "default",
-  "defaultModel": "claude-sonnet-4-5-20250929"
-}
-EOF
+# Copy all files from common/homedir to user home
+# Preserve directory structure and permissions
+info "Copying configuration files to $USER_HOME..."
+cp -r /tmp/homedir/. "$USER_HOME/"
 
-# Create .claude/settings.json
-cat > "$USER_HOME/.claude/settings.json" <<'EOF'
-{
-  "betaTools": ["read", "edit", "write", "task", "bash", "glob", "grep", "webFetch", "webSearch"]
-}
-EOF
+# Ensure .local/bin scripts are executable
+if [ -d "$USER_HOME/.local/bin" ]; then
+    find "$USER_HOME/.local/bin" -type f -exec chmod +x {} +
+fi
 
-# Create .gitconfig
-cat > "$USER_HOME/.gitconfig" <<'EOF'
-[init]
-    defaultBranch = main
-[core]
-    editor = vim
-[user]
-    name = Agent User
-    email = agent@localhost
-[pull]
-    rebase = false
-EOF
-
-# Create start-claude helper script
-cat > "$USER_HOME/.local/bin/start-claude" <<'EOF'
-#!/bin/bash
-exec claude "$@"
-EOF
-chmod +x "$USER_HOME/.local/bin/start-claude"
+# Ensure .claude scripts are executable
+if [ -d "$USER_HOME/.claude" ]; then
+    find "$USER_HOME/.claude" -type f -name "*.sh" -exec chmod +x {} +
+fi
 
 # Set ownership
 USER_UID=$(id -u "$LIMA_USER")
 USER_GID=$(id -g "$LIMA_USER")
 chown -R "$USER_UID:$USER_GID" "$USER_HOME"
 
-info "Home directory configuration complete"
+info "Home directory configuration deployed from common/homedir/"
 
 # ==============================================================================
 # 7. Inject GCP credentials if provided
