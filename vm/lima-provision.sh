@@ -63,21 +63,33 @@ fi
 info "All expected files verified in /tmp/"
 
 # ==============================================================================
-# Package lists (embedded from common/packages/*.txt)
+# Package lists (sourced from common/packages/*.txt)
 # ==============================================================================
+info "Reading package lists from common directory..."
 
-# APT packages
-APT_PACKAGES=(
-    # Base utilities
-    bc ca-certificates curl bind9-dnsutils findutils g++ gh git gnupg
-    gosu jq less lsb-release lsof make man-db nodejs npm procps psmisc
-    python3 python3-pip ripgrep rsync shellcheck shfmt socat sshfs
-    tcl tk unzip vim yq
-)
+# Verify package list files exist
+for file in apt-packages.txt npm-packages.txt python-packages.txt versions.txt; do
+    if [ ! -f "/tmp/$file" ]; then
+        error "Package list not found: /tmp/$file"
+    fi
+done
 
-# VM-specific packages
+# Source version numbers
+# shellcheck source=/dev/null
+source /tmp/versions.txt
+
+# Read APT packages (filter comments and blank lines)
+mapfile -t APT_PACKAGES < <(grep -v '^#' /tmp/apt-packages.txt | grep -v '^$')
+
+# VM-specific packages (not in common, only needed in VM)
 VM_PACKAGES=(
-    docker.io podman qemu-system-x86 qemu-utils qemu-guest-agent wget htop
+    docker.io
+    podman
+    qemu-system-x86
+    qemu-utils
+    qemu-guest-agent
+    wget
+    htop
 )
 
 # NPM packages
