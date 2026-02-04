@@ -113,7 +113,7 @@ function start_vm {
     # Start if stopped
     if ! vm_is_running; then
       echo "Starting VM: $VM_NAME"
-      limactl start "$VM_NAME"
+      limactl start --tty=false "$VM_NAME"
     else
       echo "VM is already running"
     fi
@@ -188,7 +188,7 @@ GCPEOF
   fi
 
   # Start VM with Lima
-  limactl start --name="$VM_NAME" "$template_path"
+  limactl start --tty=false --name="$VM_NAME" "$template_path"
 
   # Clean up temporary files
   if [[ "$template_path" != "$SCRIPT_DIR/agent-vm.yaml" ]]; then
@@ -559,13 +559,11 @@ function clean_all_workspaces {
 
 function ensure_vm_running {
   if ! vm_exists; then
-    echo "Error: No VM exists. Create one with: ./agent-vm start" >&2
-    exit 1
-  fi
-
-  if ! vm_is_running; then
+    echo "No VM exists. Creating with default settings..."
+    start_vm "" "" # No memory/vcpu overrides, use template defaults
+  elif ! vm_is_running; then
     echo "VM is stopped. Starting..."
-    limactl start "$VM_NAME"
+    limactl start --tty=false "$VM_NAME"
 
     # Wait for SSH to be ready
     echo "Waiting for VM to be ready..."
