@@ -82,9 +82,12 @@ fi
 info "Installing Lima version: $LIMA_VERSION"
 curl -fsSL "https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-${LIMA_VERSION}-Linux-x86_64.tar.gz" | tar -C /usr/local -xzf -
 
-if ! /usr/local/bin/limactl --version; then
-    error "Lima installation failed"
+# Verify Lima installation (check binary exists, don't run it as root)
+if [ ! -x /usr/local/bin/limactl ]; then
+    error "Lima installation failed - limactl binary not found or not executable"
 fi
+
+info "Lima installed successfully"
 
 # ==============================================================================
 # 3. Install Node.js packages
@@ -239,8 +242,8 @@ chmod 644 /etc/agent-environment
 # ==============================================================================
 info "Provisioning complete! VM is ready for use."
 info "User: $LIMA_USER"
-info "Claude Code: $(claude --version 2>&1 | head -1 || echo 'installed')"
+info "Claude Code: installed (run as user to check version)"
 info "Go: $(/usr/local/go/bin/go version 2>&1 | awk '{print $3}' || echo 'installed')"
-info "Lima: $(limactl --version 2>&1 | head -1 || echo 'installed')"
+info "Lima: installed (run as user to check version)"
 
 exit 0
