@@ -128,8 +128,12 @@ info "Installing hadolint $HADOLINT_VERSION..."
 curl -fsSL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint
 chmod +x /usr/local/bin/hadolint
 
-# Install Claude Code
-CLAUDE_VERSION="0.1.61"
+# Install Claude Code (fetch latest version)
+CLAUDE_VERSION=$(curl -fsSL https://api.github.com/repos/anthropics/claude-code/releases/latest | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
+if [ -z "$CLAUDE_VERSION" ]; then
+    error "Failed to fetch Claude Code version from GitHub"
+fi
+
 info "Installing Claude Code $CLAUDE_VERSION..."
 curl -fsSL "https://github.com/anthropics/claude-code/releases/download/v${CLAUDE_VERSION}/claude-code_${CLAUDE_VERSION}_amd64.deb" -o /tmp/claude-code.deb
 dpkg -i /tmp/claude-code.deb
