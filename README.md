@@ -9,11 +9,11 @@ approaches.
 | ------- | --------- | --- |
 | **Startup time** | ~2 seconds | ~30-60 seconds |
 | **Isolation** | Strong (namespaces) | Strongest (full VM) |
-| **Nested virtualization** | No | Yes (libvirt/KVM) |
+| **Nested virtualization** | No | Yes (via Lima) |
 | **Resource overhead** | Minimal | Moderate |
-| **Multi-runtime** | Docker or Podman | libvirt/KVM |
-| **Best for** | Quick iterations, development | Testing, VMs |
-| **Requires** | Docker or Podman | libvirt/KVM, Terraform |
+| **Platform support** | Linux | Linux, macOS |
+| **Best for** | Quick iterations, development | Testing, cross-platform |
+| **Requires** | Docker or Podman | Lima |
 
 ## Quick Start
 
@@ -32,13 +32,15 @@ cd container
 
 ### VM Approach
 
-Full virtual machine isolation with nested virtualization support.
+Full virtual machine isolation using Lima. Works on Linux and macOS.
 
 → **[VM Documentation](vm/README.md)**
 
+**Prerequisites:** Lima (automatically installs if missing on macOS)
+
 ```bash
 cd vm
-./vm-up.sh
+./agent-vm -b my-feature-branch
 ```
 
 ## What's Inside
@@ -65,7 +67,7 @@ successfully run AI assistants after repository changes.
 **Requirements:**
 
 - Valid credentials (GCP service account or API keys)
-- Docker (for container tests) or Terraform + libvirt (for VM tests)
+- Docker (for container tests) or Lima (for VM tests)
 
 **Run tests:**
 
@@ -84,8 +86,8 @@ successfully run AI assistants after repository changes.
 ```
 
 **Note:** These tests make real API calls and are not suitable for CI. Run
-locally before committing changes to configs, Dockerfiles, or Terraform
-files.
+locally before committing changes to configs, Dockerfiles, or Lima
+configurations.
 
 See `docs/plans/2026-01-05-integration-tests-design.md` for design details.
 
@@ -101,11 +103,11 @@ the industry-standard `GOOGLE_APPLICATION_CREDENTIALS`.
 ```bash
 # Old (no longer works)
 export GCP_CREDENTIALS_PATH="~/my-service-account.json"
-./vm/vm-up.sh
+./vm/agent-vm -b my-branch
 
 # New
 export GOOGLE_APPLICATION_CREDENTIALS="~/my-service-account.json"
-./vm/vm-up.sh
+./vm/agent-vm -b my-branch
 ```
 
 **Container and integration tests:** No action required (CLI flag still works)
