@@ -92,13 +92,8 @@ VM_PACKAGES=(
     htop
 )
 
-# NPM packages
-NPM_PACKAGES=(
-    "@github/copilot@latest"
-    "@google/gemini-cli@latest"
-    "opencode-ai"
-    "prettier"
-)
+# Read NPM packages (filter comments and blank lines)
+mapfile -t NPM_PACKAGES < <(grep -v '^#' /tmp/npm-packages.txt | grep -v '^$')
 
 # Python packages
 PYTHON_PACKAGES=(
