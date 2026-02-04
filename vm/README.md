@@ -1,203 +1,234 @@
-# VM Approach - Debian AI Development VM
+# VM Approach - Lima-based Agent VM
 
-Terraform configuration for deploying a Debian 13 virtual machine with AI
-coding agents using libvirt/KVM.
+Lima-based development environment for working with AI coding agents using
+isolated virtual machines.
 
 **[← Back to main documentation](../README.md)**
 
+**Key Feature: Strong Isolation** - The VM uses forward SSHFS for file
+sharing, where the host mounts VM directories. The VM cannot access host
+files, credentials, or configs, providing strong security boundaries.
+
+## Overview
+
+This project provides a Lima-based VM environment that enables developers
+to work with AI coding agents on isolated Git branches using workspace
+directories. The VM comes pre-configured with:
+
+- **Claude Code** - Anthropic's AI coding assistant
+- **Gemini CLI** - Google's Gemini CLI
+- **GitHub Copilot CLI** - GitHub's AI coding assistant
+- **Development tools** - Git, Node.js, Python, Docker, Podman, and more
+- **Code quality tools** - pre-commit, hadolint, pipenv, poetry
+- **Nested VM support** - Lima pre-installed for nested virtualization
+
+**Isolation Model:**
+
+- ✅ Forward SSHFS (host mounts VM, not reverse)
+- ✅ VM cannot access host filesystem
+- ✅ VM cannot access host credentials or configs
+- ✅ Single VM, multiple workspace directories
+- ✅ Each workspace is independent git clone
+- ✅ Cross-platform support (Linux, macOS, Windows via WSL2)
+
 ## Features
 
-- **Infrastructure as Code**: Declarative VM configuration with Terraform
-- **Console Auto-Login**: Serial console automatically logs in as root
-- **SSH Key Management**: Centralized SSH key directory for access control
-- **Cloud-Init Provisioning**: Automated system configuration
-- **Dual User Access**: SSH access for both default user and root
-- **Constrained Sudo Access**: Default user can install packages and
-  manage services
-- **AI Coding Agents**: Pre-installed claude-code, gemini-cli, and
-  copilot
-- **Vertex AI Integration**: Optional Google Cloud Vertex AI
-  authentication
-
-## Package Management
-
-This VM uses shared package lists from `../common/packages/`:
-
-- `apt-packages.txt` - Debian packages installed via cloud-init
-- `npm-packages.txt` - Global npm packages (AI agents)
-- `python-packages.txt` - Python tools (pre-commit, poetry, etc.)
-- `versions.txt` - Version pins for Go, hadolint, etc.
-
-Packages are automatically installed during VM provisioning via cloud-init.
+- **Strong Isolation**: VM cannot access host filesystem or credentials
+- **Forward SSHFS**: Host mounts VM directories (secure direction)
+- **AI Agent Support**: Pre-installed Claude Code, Gemini CLI, and
+  GitHub Copilot CLI
+- **Cross-Platform**: Linux, macOS, and Windows (via WSL2)
+- **Single-VM Architecture**: Multiple workspaces in one VM
+- **Git Workspace Support**: Each branch gets independent git clone
+- **Automatic SSH Setup**: Lima manages SSH keys and configuration
+- **Nested Virtualization**: Lima pre-installed for testing VM workflows
 
 ## Prerequisites
 
-- libvirt/KVM installed and running
-- Terraform >= 1.0
-- Access to qemu:///system libvirt URI
-- Network connectivity to download Debian cloud images
-- **Multi-interface hosts**: Run `./libvirt-nat-fix.sh` after each host
-  reboot (see Troubleshooting)
+- **Lima** - VM management tool (cross-platform)
+- **SSHFS** - For mounting VM directories on host
+- **Git** - Version control
+- **Bash** - For running the agent-vm script
 
-### Install Prerequisites (Debian/Ubuntu)
+**Platform support:**
+
+- **Linux** - Native support via package managers
+- **macOS** - Native support via Homebrew
+- **Windows** - Via WSL2 (run agent-vm within WSL)
+
+### Install Lima
+
+**Linux (Debian/Ubuntu):**
 
 ```bash
+# Add Lima repository
 sudo apt-get update
-sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils
-sudo systemctl enable --now libvirtd
-sudo usermod -aG libvirt $USER
+sudo apt-get install -y curl
+curl -fsSL https://lima-vm.io/lima.gpg | sudo apt-key add -
+echo "deb https://lima-vm.io/deb/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/lima.list
+
+# Install Lima
+sudo apt-get update
+sudo apt-get install -y lima
+
+# Verify installation
+limactl --version
 ```
 
-### Install Terraform
-
-Follow instructions at: <https://www.terraform.io/downloads>
-
-## Getting Started
-
-### Quick Start
+**macOS:**
 
 ```bash
-# Create VM and connect
-cd vm/
-./agent-vm -b feature-auth
+# Install via Homebrew
+brew install lima
 
-# Inside VM
-claude  # Start Claude Code
+# Verify installation
+limactl --version
 ```
 
-The VM persists after exit. Reconnect anytime with the same command.
+**Windows (WSL2):**
+
+Install within WSL2 environment using Linux instructions above.
+
+### Install SSHFS
+
+**Linux (Debian/Ubuntu):**
+
+```bash
+sudo apt-get install -y sshfs
+```
+
+**macOS:**
+
+```bash
+brew install sshfs
+```
+
+**Windows (WSL2):**
+
+Install within WSL2 using Linux instructions above.
+
+## Quick Start
+
+1. **Navigate to the vm directory:**
+
+   ```bash
+   cd agent-container-lima/vm
+   ```
+
+2. **Create/connect to a workspace:**
+
+   ```bash
+   ./agent-vm connect my-feature-branch
+   ```
+
+This will:
+
+- Start the VM (if not running) or create it (if it doesn't exist)
+- Create a workspace directory for your branch
+- Initialize a git repository in the workspace
+- Push your branch to the workspace
+- Mount the workspace via SSHFS to `~/.agent-vm-mounts/workspace/`
+- Drop you into an SSH session in the workspace directory
 
 ## Usage
 
-### Basic Workflow
+### VM Lifecycle
 
 ```bash
-# Create/connect to VM for a branch
-./agent-vm -b feature-name
+# Start VM (creates if doesn't exist)
+./agent-vm start
 
-# Run command in VM
-./agent-vm -b feature-name -- claude
+# Start with custom resources (creation-time only)
+./agent-vm start --memory 16 --vcpu 8
 
-# Create VM with custom resources
-./agent-vm -b big-build --memory 16384 --vcpu 8
+# Show VM status and workspaces
+./agent-vm status
+
+# Destroy VM completely (stops if running, deletes all workspaces)
+./agent-vm destroy
 ```
 
-### Managing VMs
+### Workspace Operations
 
 ```bash
-# List all VMs
-./agent-vm --list
+# Create/connect to workspace (auto-starts VM if needed)
+./agent-vm connect my-feature-branch
 
-# Stop VM (keeps workspace)
-./agent-vm -b feature-name --stop
+# Connect to VM without workspace (just shell)
+./agent-vm connect
 
-# Destroy VM completely
-./agent-vm -b feature-name --destroy
+# Push local branch to VM workspace
+./agent-vm push my-feature-branch
 
-# Clean up all stopped VMs
-./agent-vm --cleanup
+# Fetch commits from VM workspace to host
+./agent-vm fetch my-feature-branch
+
+# Delete specific workspace
+./agent-vm clean my-feature-branch
+
+# Delete all workspaces (keeps VM running)
+./agent-vm clean-all
+```
+
+### Inside the VM
+
+Once connected to a workspace, you can use:
+
+```bash
+# Start Claude Code (recommended - includes MCP servers and plugins)
+start-claude
+
+# Or use claude directly
+claude
+
+# Start Gemini CLI
+gemini
+
+# Start GitHub Copilot CLI
+copilot
 ```
 
 ## How It Works
 
-**Single VM Architecture:**
+**Single-VM Architecture:**
 
-- One persistent VM (`agent-vm`) hosts multiple workspace directories
-- Each workspace corresponds to a repository-branch combination
-- Workspaces isolated as separate directories with full git clones
+- One persistent VM named `agent-vm` running Debian 13
+- Multiple workspace directories within VM (`~/workspace/<repo>-<branch>/`)
+- Each workspace is a full git clone (not a worktree)
+- Workspaces isolated from each other
 - SSHFS mounts entire workspace directory to host
 
 **Workflow:**
 
-1. `./agent-vm -b feature-auth` - Creates VM (if needed) and workspace
+1. `./agent-vm connect feature-auth` - Starts VM and creates workspace
 2. Edit files at `~/.agent-vm-mounts/workspace/<repo>-feature-auth/`
+   on host using your IDE
 3. Build/test in VM SSH session
 4. Commit changes in VM
-5. `./agent-vm -b feature-auth --fetch` - Fetch changes back to host
+5. `./agent-vm fetch feature-auth` - Fetch changes back to host repo
 
 **Resource Efficiency:**
 
-- Multiple agents share one VM (reduced memory/CPU usage)
+- Multiple workspaces share one VM (reduced memory/CPU usage)
 - Workspaces are lightweight directories, not full VMs
 - Single SSHFS mount for all workspaces
 
 ### Filesystem Sharing
 
-Files are shared between host and VM via SSHFS:
+Files are shared between host and VM via forward SSHFS (host mounts VM):
 
 - Host mount: `~/.agent-vm-mounts/workspace/`
 - VM directory: `~/workspace/`
-- See all workspaces in one mount point
+- All workspaces visible in single mount point
+
+**Security benefits:**
+
+- VM cannot access host filesystem
+- VM cannot read host credentials or configs
+- If VM is compromised, attack surface limited to SSH server
+- Only mounted directories are visible to host
 
 Changes on host appear immediately in VM and vice versa.
-
-## Using AI Coding Agents
-
-The VM comes pre-installed with AI coding agents:
-
-- **claude-code**: Anthropic's Claude Code agent
-- **gemini-cli**: Google's Gemini CLI
-- **copilot**: GitHub Copilot CLI
-
-### Using Claude Code with Vertex AI
-
-**GCP credentials are auto-detected** from your default location:
-
-```bash
-# Ensure you have GCP credentials set up
-gcloud auth application-default login
-
-# Set environment variables for Vertex AI
-export ANTHROPIC_VERTEX_PROJECT_ID="your-gcp-project-id"
-export CLOUD_ML_REGION="us-central1"  # Optional, defaults to us-central1
-
-# Create VM (credentials will be auto-detected)
-./agent-vm -b feature-name
-```
-
-The `agent-vm` script will:
-
-- Automatically detect GCP credentials from
-  `~/.config/gcloud/application_default_credentials.json`
-- Pass credentials and environment variables to the VM
-- Configure Claude Code for Vertex AI authentication
-
-#### Alternative: Custom credentials path
-
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS="~/my-service-account.json"
-export ANTHROPIC_VERTEX_PROJECT_ID="your-gcp-project-id"
-./agent-vm -b feature-name
-```
-
-### Running Claude Code
-
-Connect to the VM and run:
-
-```bash
-./agent-vm -b feature-name
-start-claude  # Recommended - includes MCP servers and plugins
-```
-
-The `start-claude` helper script automatically sets up MCP servers (context7,
-docling, playwright) and plugins (superpowers) on first run.
-
-Environment variables are automatically configured:
-
-- `GOOGLE_APPLICATION_CREDENTIALS`
-- `ANTHROPIC_VERTEX_PROJECT_ID`
-- `CLOUD_ML_REGION`
-- `CLAUDE_CODE_USE_VERTEX`
-
-### Installed Tools
-
-All agents have access to:
-
-- **Languages**: Python 3, Go 1.25.0, Node.js
-- **Package Managers**: npm, pip, uv, poetry, pipenv
-- **Development Tools**: git, jq, ripgrep
-- **Container Runtimes**: docker, podman (for testing container approach)
-- **Python Tools**: pre-commit, dvc
 
 ## Configuration
 
@@ -206,224 +237,425 @@ All agents have access to:
 Customize VM resources at creation time:
 
 ```bash
-# Default: 4 vCPU, 4096 MB RAM
-./agent-vm -b feature-name
+# Default: 4 vCPU, 8 GB RAM, 100 GB disk
+./agent-vm start
 
-# High-resource build
-./agent-vm -b big-build --vcpu 8 --memory 16384
+# High-resource configuration
+./agent-vm start --memory 16 --vcpu 8
 
 # Custom configuration
-./agent-vm -b custom --vcpu 6 --memory 8192
+./agent-vm start --memory 12 --vcpu 6
 ```
 
-**Note:** Resource settings only apply at VM creation time and cannot be
-changed after.
+**Note:** Resource settings only apply at VM creation time. To change
+resources, destroy and recreate the VM.
+
+### Built-in Configurations
+
+The VM uses built-in configurations from `../common/homedir/`:
+
+- `.claude.json` - Claude Code settings (model, preferences)
+- `.gitconfig` - Git configuration (name, email, aliases)
+- `.local/bin/start-claude` - Helper script for starting Claude Code
+
+These are deployed to the VM during provisioning and are shared with the
+container approach.
+
+To customize permanently:
+
+1. Edit files in `../common/homedir/`
+2. Destroy and recreate the VM to apply changes
+
+### Environment Variables
+
+**Authentication:**
+
+Set these environment variables on your host before starting the VM to
+enable AI service authentication:
+
+**Claude Code:**
+
+- `ANTHROPIC_API_KEY` - Anthropic API key (for direct API access)
+- `ANTHROPIC_MODEL` - Model to use (default: claude-3-5-sonnet-20241022)
+- `ANTHROPIC_SMALL_FAST_MODEL` - Fast model for simple tasks
+- `ANTHROPIC_VERTEX_PROJECT_ID` - Google Cloud project for Vertex AI
+- `CLOUD_ML_REGION` - Cloud region for Vertex AI (default: us-central1)
+- `CLAUDE_CODE_USE_VERTEX` - Use Vertex AI instead of direct API
+
+**Gemini CLI:**
+
+- `GEMINI_API_KEY` - API key for Gemini
+
+**GCP Credential Injection:**
+
+For Vertex AI authentication, credentials are detected and injected during
+VM provisioning:
+
+```bash
+# Auto-detected from default location
+./agent-vm start  # Uses ~/.config/gcloud/application_default_credentials.json
+
+# Override with custom path
+export GOOGLE_APPLICATION_CREDENTIALS=~/my-service-account.json
+export ANTHROPIC_VERTEX_PROJECT_ID="your-gcp-project-id"
+./agent-vm start
+```
+
+The credential file is:
+
+- Detected from `GOOGLE_APPLICATION_CREDENTIALS` env var or default location
+- Injected during VM provisioning
+- Written to `/etc/google/application_default_credentials.json` in VM
+- Environment variables set system-wide via `/etc/profile.d/ai-agent-env.sh`
+- Available to all workspaces and SSH sessions
+
+**Connection-time environment variables:**
+
+Environment variables listed in `common/packages/envvars.txt` are passed
+through to SSH sessions when connecting to workspaces. Only variables that
+are set in your host environment are passed through.
 
 ## Nested Virtualization
 
-The VM supports nested virtualization, allowing you to run a VM inside a VM.
-This is useful for testing VM provisioning or isolating AI agent work.
-
-### Prerequisites for Nested Virtualization
-
-1. **Host CPU must support nested virtualization**:
-
-   ```bash
-   # Check if nested virtualization is enabled
-   cat /sys/module/kvm_intel/parameters/nested  # Intel
-   cat /sys/module/kvm_amd/parameters/nested    # AMD
-   # Should output: Y or 1
-   ```
-
-2. **Enable nested KVM** (if not already enabled):
-
-   ```bash
-   # Intel
-   echo "options kvm_intel nested=1" | sudo tee /etc/modprobe.d/kvm.conf
-   # AMD
-   echo "options kvm_amd nested=1" | sudo tee /etc/modprobe.d/kvm.conf
-
-   # Reload module
-   sudo modprobe -r kvm_intel && sudo modprobe kvm_intel  # Intel
-   sudo modprobe -r kvm_amd && sudo modprobe kvm_amd      # AMD
-   ```
+The VM includes Lima pre-installed, enabling you to run VMs inside the VM
+for testing VM workflows or further isolation.
 
 ### Running Nested VMs
 
-**Network subnets are automatically configured!** The `agent-vm`
-script detects if you're running inside a VM and automatically selects
-a different network subnet to avoid conflicts.
-
 ```bash
-# Inside the outer VM, create a nested VM normally
-./agent-vm -b nested-feature
-# Script will detect you're on 192.168.123.x and use 192.168.200.0/24
+# Inside the VM, create a nested VM using Lima
+limactl start default
+
+# Or use the agent-vm script inside the VM
+cd /path/to/agent-container-lima/vm
+./agent-vm start
 ```
 
-**Example Nested Setup:**
-
-```bash
-# 1. On host: Create outer VM
-cd vm
-./agent-vm -b outer-feature
-
-# 2. Inside outer VM: Create inner VM (automatically uses different subnet)
-cd /worktree
-./vm/agent-vm -b inner-feature
-# Autodetects outer VM on 192.168.123.x, uses 192.168.200.0/24
-```
+Lima automatically handles network configuration to avoid conflicts with
+the outer VM.
 
 ### Features Available for Nested VMs
 
 The VM is configured with:
 
-- **CPU passthrough** (`host-passthrough`) for nested virtualization
-- **Virtualization packages**: qemu-system-x86, libvirt, virtinst
-- **Pre-initialized libvirt**: Default storage pool and network setup
-- **Increased resources**: 4 vCPUs, 4GB RAM, 40GB disk (vs 2/2GB/20GB
-  previously)
+- **Lima pre-installed** - Latest version from GitHub releases
+- **QEMU and KVM** - Full virtualization support
+- **Docker and Podman** - Container runtimes for testing container approach
+- **Sufficient resources** - 4 vCPUs, 8GB RAM, 100GB disk
 
-## SSH Key Management
+## Git Workflow
 
-**SSH keys are automatically generated** per-VM when you first create each VM.
-The keys are stored in the `vm/.ssh/` directory, organized by branch:
+### Workspace Structure
 
-- `.ssh/<branch>-key` - Private key
-- `.ssh/<branch>-key.pub` - Public key
+Each workspace in the VM is a full git clone (not a worktree), providing
+complete independence between workspaces.
 
-The `agent-vm` script automatically manages these keys. You don't need to handle
-SSH keys manually.
+Workspace naming: `<repo>-<branch>`
 
-**Security Notes:**
+Example: For repository `agent-container-lima` and branch `feature-auth`,
+the workspace is `agent-container-lima-feature-auth`.
 
-- Private keys have restrictive permissions (0600)
-- Each VM has its own unique SSH key
-- Keys are regenerated if you destroy and recreate a VM
-- Keys are not committed to git (listed in `.gitignore`)
-
-## Maintenance
-
-### View VM Status
+### Push Operation
 
 ```bash
-# List all VMs
-./agent-vm --list
-
-# View detailed VM info with virsh
-virsh list --all
+./agent-vm push feature-auth
 ```
 
-### Destroy VM
+This:
+
+1. Creates workspace directory in VM if needed
+2. Initializes git repository if needed
+3. Creates branch on host if it doesn't exist
+4. Pushes branch from host to VM workspace
+5. Checks out the branch in VM
+
+**Safety:** Uses normal `git push` (not force push), fails on conflicts.
+
+### Fetch Operation
 
 ```bash
-# Destroy specific VM
-./agent-vm -b feature-name --destroy
-
-# Clean up all stopped VMs
-./agent-vm --cleanup
+./agent-vm fetch feature-auth
 ```
 
-## Troubleshooting
+This:
 
-### VM Not Getting IP Address
+1. Checks for uncommitted changes in VM (warns if found)
+2. Fetches commits from VM workspace to host repository
+3. If branch is checked out on host: uses `git pull` to update working tree
+4. If branch is not checked out: uses `git fetch` to update ref only
+
+**Safety:** Warns about uncommitted changes but continues (only committed
+work is fetched).
+
+### Branch Creation
+
+If a branch doesn't exist locally, the `connect` and `push` commands
+automatically create it from current HEAD:
 
 ```bash
-# List VMs and their status
-./agent-vm --list
-
-# Check DHCP leases
-virsh net-dhcp-leases default
+# Creates branch 'new-feature' from HEAD and pushes to VM
+./agent-vm connect new-feature
 ```
-
-### Cannot Connect to VM
-
-1. Verify VM is running: `./agent-vm --list`
-2. Check if VM is in the running state
-3. Try reconnecting: `./agent-vm -b branch-name`
-4. Check cloud-init logs: Connect via console and run `journalctl -u cloud-init`
-
-### VM Cannot Reach Internet (Multi-Interface Hosts)
-
-**Problem**: VMs can ping gateway (192.168.122.1) but cannot reach
-internet. Common on hosts with multiple network interfaces (eth0,
-eth1, wlan0, etc).
-
-**Root Cause**: libvirt creates iptables FORWARD rules for only one
-interface (typically eth0), but traffic may route through a different
-interface (e.g., eth1 with lower metric).
-
-**Solution**: Run the NAT fix script after each host reboot:
-
-```bash
-./libvirt-nat-fix.sh
-```
-
-This script adds FORWARD rules for all active external interfaces,
-allowing VM traffic to reach the internet regardless of which
-interface is used for the default route.
-
-**Verify Fix**:
-
-```bash
-# From host
-./libvirt-nat-fix.sh
-
-# From VM (after terraform apply)
-ssh root@<VM_IP> ping -c 3 8.8.8.8
-```
-
-**Permanent Solution**: Add the script to your system startup (e.g.,
-as a systemd service) or run it manually after each reboot and before
-`terraform apply`.
-
-## Architecture
-
-- **Hypervisor**: libvirt/KVM (qemu:///system)
-- **Base Image**: Debian 13 (Trixie) cloud image
-- **Provisioning**: cloud-init
-- **Networking**: Default libvirt network (NAT)
-- **Storage**: qcow2 disk image in default pool
-- **Console**: Serial console with auto-login
-
-## Security Notes
-
-This configuration is designed for **development/testing environments**:
-
-- Console auto-login as root (assumes trusted environment)
-- Root SSH access enabled (key-based only)
-- No password authentication
-- Assumes local libvirt instance (not exposed to network)
-
-For production use, consider:
-
-- Disabling root SSH access
-- Removing console auto-login
-- Implementing firewall rules
-- Using restricted user accounts
-- Regular security updates
 
 ## File Structure
 
 ```text
 vm/
 ├── README.md              # This file
-├── main.tf                # Terraform resources
-├── variables.tf           # Input variables
-├── outputs.tf             # Output values
-├── cloud-init.yaml.tftpl  # Cloud-init template
-├── agent-vm               # Unified VM management script
-├── vm-common.sh           # Helper functions
-├── libvirt-nat-fix.sh     # Network fix script
-└── .ssh/                  # Per-VM SSH keys (not in git)
+├── CLAUDE.md              # Claude Code assistant instructions
+├── TROUBLESHOOTING.md     # Troubleshooting guide
+├── agent-vm.yaml          # Lima VM template
+├── lima-provision.sh      # VM provisioning script
+└── agent-vm               # CLI wrapper script
 
 ../common/
 ├── homedir/               # Shared configs (deployed to VM)
-└── packages/              # Package lists (used in cloud-init)
+│   ├── .claude.json
+│   ├── .gitconfig
+│   └── .local/bin/start-claude
+├── packages/              # Package lists (used in provisioning)
+│   ├── apt-packages.txt
+│   ├── npm-packages.txt
+│   ├── python-packages.txt
+│   ├── versions.txt
+│   └── envvars.txt
+└── scripts/
+    └── install-tools.sh   # Tool installation script
+
+~/.lima/agent-vm/          # Lima state (created at runtime)
+~/.agent-vm-mounts/        # SSHFS mount points (created at runtime)
 ```
+
+## Isolation & Security
+
+This VM uses forward SSHFS for strong security isolation:
+
+**What the agent CAN access:**
+
+- ✅ Workspace directories in VM (read-write)
+- ✅ Built-in configs from `../common/homedir/` (deployed during provisioning)
+- ✅ Injected credentials (from provisioning)
+- ✅ Other workspaces in the VM (accessible via filesystem)
+
+**What the agent CANNOT access:**
+
+- ❌ Host filesystem outside mounted workspace
+- ❌ Host configs (`~/.claude`, `~/.config/gcloud`, etc.)
+- ❌ Host credentials or secrets (except those injected)
+- ❌ Other users' files or host processes
+
+**Security properties:**
+
+- VM cannot initiate connections to host filesystem
+- VM cannot corrupt your host configs
+- VM cannot access host Docker socket or escalate privileges
+- If VM is compromised, attack surface limited to SSH server
+- Credentials are system-wide in VM but isolated from host
+
+**SSHFS direction:**
+
+Forward SSHFS (host mounts VM directories) is more secure than reverse
+SSHFS (VM mounts host directories) because:
+
+- VM cannot access host filesystem even if compromised
+- Host controls what gets mounted and when
+- VM has no visibility into host filesystem structure
+
+## Comparison with Container Approach
+
+| Aspect | Container | VM |
+| --- | --- | --- |
+| **Isolation** | Container (namespace) | Full VM (KVM/QEMU) |
+| **Startup** | Fast (~1-5s) | Slower (~10-30s) |
+| **Resources** | Lightweight | Heavier (VM overhead) |
+| **File Sharing** | Bind mounts | Forward SSHFS |
+| **Nested VMs** | Limited | Full (Lima installed) |
+| **Platform** | Docker/Podman | Lima required |
+| **Security** | Strong | Stronger (full VM) |
+| **Use Case** | Quick iteration | Heavy workloads |
+
+**When to use container approach:**
+
+- Fast iteration cycles
+- CI/CD pipelines
+- Lighter workloads
+- Docker/Podman already installed
+
+**When to use VM approach:**
+
+- Need full VM isolation
+- Testing VM workflows (nested VMs)
+- Heavy workloads (builds, tests)
+- Platform without Docker/Podman
+- macOS development
+
+## Migration from Terraform Version
+
+### Breaking Changes
+
+The Lima migration is a **breaking change**. You must destroy your existing
+Terraform-based VMs and recreate with Lima.
+
+**What changed:**
+
+1. **CLI interface** - New command structure (see Usage section)
+2. **SSH keys** - Lima manages keys automatically (old keys discarded)
+3. **VM IP addressing** - Dynamic instead of static (transparent via Lima)
+4. **State location** - Moved from `vm/terraform.tfstate` to `~/.lima/agent-vm/`
+5. **Resource specification** - Use `./agent-vm start --memory N --vcpu M`
+   instead of command-line flags during connect
+
+**What stayed the same:**
+
+1. **Workspace structure** - Same (`~/workspace/<repo>-<branch>/`)
+2. **Git workflow** - Identical (push/fetch operations)
+3. **SSHFS mount location** - Same (`~/.agent-vm-mounts/workspace/`)
+4. **Common configs** - Same (`common/` directory)
+5. **Architecture** - Still single-VM, multi-workspace
+
+### Migration Steps
+
+1. **Fetch any uncommitted work from existing VM:**
+
+   ```bash
+   # Old Terraform-based command
+   ./agent-vm -b my-branch --fetch
+   ```
+
+2. **Destroy Terraform-based VM:**
+
+   ```bash
+   # Old Terraform-based command
+   ./agent-vm --destroy
+   ```
+
+3. **Install Lima and SSHFS** (see Prerequisites section above)
+
+4. **Create new Lima-based VM:**
+
+   ```bash
+   # New Lima-based command
+   ./agent-vm start
+   ```
+
+5. **Connect to your workspace:**
+
+   ```bash
+   # New Lima-based command
+   ./agent-vm connect my-branch
+   ```
+
+**Note:** Your git repository and branches are unaffected by the migration.
+Only the VM infrastructure changes.
+
+## Troubleshooting
+
+### VM Won't Start
+
+```bash
+# Check Lima installation
+limactl --version
+
+# Check VM status
+./agent-vm status
+
+# Try starting explicitly
+./agent-vm start
+```
+
+### Cannot Connect to Workspace
+
+1. Verify VM is running: `./agent-vm status`
+2. Check workspace exists: `./agent-vm status` (lists workspaces)
+3. Try creating workspace: `./agent-vm connect branch-name`
+
+### SSHFS Mount Issues
+
+```bash
+# Check mount status
+mountpoint -q ~/.agent-vm-mounts/workspace && echo "Mounted" || echo "Not mounted"
+
+# Unmount manually if stuck
+fusermount -u ~/.agent-vm-mounts/workspace   # Linux
+umount ~/.agent-vm-mounts/workspace          # macOS
+
+# Reconnect to workspace
+./agent-vm connect branch-name
+```
+
+### Push/Fetch Fails
+
+**Push failures:**
+
+- Ensure branch exists locally or let `agent-vm` create it
+- Check for merge conflicts in VM workspace
+- Verify VM is running: `./agent-vm status`
+
+**Fetch failures:**
+
+- Commit or stash changes in VM before fetching
+- Check network connectivity to VM
+- Verify workspace exists: `./agent-vm status`
+
+### VM Performance Issues
+
+**Slow performance:**
+
+1. Check resource allocation: `./agent-vm status`
+2. Destroy and recreate with more resources:
+
+   ```bash
+   ./agent-vm destroy
+   ./agent-vm start --memory 16 --vcpu 8
+   ```
+
+3. Check host system resources (CPU, memory available)
+
+### macOS-Specific Issues
+
+**SSHFS mount failures:**
+
+- Ensure macFUSE is installed: `brew install macfuse`
+- Check macFUSE kernel extension is loaded
+- Restart macOS if kernel extension was just installed
+
+**VM performance:**
+
+- macOS uses QEMU emulation (slower than Linux KVM)
+- Consider increasing VM resources
+- Use container approach for lighter workloads
+
+## Architecture
+
+- **VM Management**: Lima (<https://lima-vm.io/>)
+- **VM Backend**: QEMU (cross-platform)
+- **Base Image**: Debian 13 (Trixie) cloud image
+- **Provisioning**: Lima provision scripts + cloud-init
+- **Networking**: Lima managed (automatic)
+- **Storage**: QCOW2 disk image managed by Lima
+- **File Sharing**: Forward SSHFS (host mounts VM)
+- **SSH**: Lima managed (automatic key generation and config)
+
+## Security Notes
+
+This configuration is designed for **development/testing environments**:
+
+- VM isolation provides strong security boundaries
+- Forward SSHFS prevents VM from accessing host
+- SSH key-based authentication only (no passwords)
+- Credentials injected at provisioning time (not runtime)
+- Lima manages SSH configuration automatically
+
+For production use, consider:
+
+- Implementing additional firewall rules
+- Regular security updates via reprovisioning
+- Credential rotation strategies
+- Audit logging for VM access
 
 ## References
 
-- [Terraform libvirt Provider](https://github.com/dmacvicar/terraform-provider-libvirt)
+- [Lima Documentation](https://lima-vm.io/)
 - [Debian Cloud Images](https://cloud.debian.org/images/cloud/)
-- [Cloud-Init Documentation](https://cloudinit.readthedocs.io/)
-- [libvirt Documentation](https://libvirt.org/docs.html)
+- [SSHFS Documentation](https://github.com/libfuse/sshfs)
+- [QEMU Documentation](https://www.qemu.org/documentation/)
