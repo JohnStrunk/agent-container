@@ -24,14 +24,16 @@ case "$PLATFORM" in
 esac
 
 function vm_exists {
-  limactl list --format json 2>/dev/null | grep -q "\"name\":\"$VM_NAME\""
+  # Use text format instead of JSON to work around Lima 2.0.3 bug with embedded binary data
+  limactl list 2>/dev/null | awk 'NR>1 {print $1}' | grep -q "^${VM_NAME}$"
 }
 
 function vm_is_running {
   if ! vm_exists; then
     return 1
   fi
-  limactl list --format json 2>/dev/null | grep "\"name\":\"$VM_NAME\"" | grep -q "\"status\":\"Running\""
+  # Use text format instead of JSON to work around Lima 2.0.3 bug with embedded binary data
+  limactl list 2>/dev/null | awk -v name="$VM_NAME" 'NR>1 && $1==name {print $2}' | grep -q "^Running$"
 }
 
 function get_vm_home {
