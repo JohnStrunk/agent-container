@@ -280,8 +280,9 @@ sshd;*;*;Al0000-2400;docker,kvm,podman
 GROUPCONF
 
 if ! grep -q "pam_group.so" /etc/pam.d/sshd 2>/dev/null; then
-    # Add pam_group.so to SSH PAM configuration
-    sed -i '/^@include common-auth/a auth       optional   pam_group.so' /etc/pam.d/sshd
+    # Add pam_group.so to SSH PAM configuration (session section, not auth)
+    # Must come after pam_loginuid.so but before @include common-session
+    sed -i '/^session.*required.*pam_loginuid.so/a session    optional   pam_group.so' /etc/pam.d/sshd
     info "PAM group initialization configured for SSH"
 else
     info "PAM group initialization already configured"
