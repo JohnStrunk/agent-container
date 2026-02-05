@@ -67,9 +67,8 @@ See design: `docs/plans/2026-01-05-integration-tests-design.md`
 
 ## Developing This Repository
 
-This repository is frequently developed from within the VM or container
-environments themselves. Both support nested virtualization/containers for
-testing changes:
+This repository is frequently developed from within the VM environment itself.
+It supports nested virtualization/containers for testing changes:
 
 ### Nested VM Testing
 
@@ -85,7 +84,7 @@ you can test VM provisioning changes using nested virtualization:
 
 **Startup time:**
 
-- Nested VMs take approximately **5 minutes** to start (vs seconds for
+- Nested VMs take approximately **5 minutes** to start (vs 4 minutes for
   host-level VMs)
 - This is due to nested virtualization overhead
 
@@ -112,11 +111,6 @@ exit
 cd ..
 ./test-integration.sh --vm
 ```
-
-### Nested Container Testing
-
-When working inside a container, Docker-in-Docker is supported for testing
-container changes. See `container/CLAUDE.md` for details.
 
 ## Common Resources
 
