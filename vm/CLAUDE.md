@@ -186,45 +186,6 @@ After modifying Lima template or provisioning script:
    ./test-integration.sh --vm
    ```
 
-### Developing This Repository
-
-This VM is frequently used to develop this repository itself. When working
-on VM provisioning changes, you can test them using nested virtualization
-(Lima inside Lima).
-
-**Requirements:**
-
-- Sufficient memory allocation (recommend 16GB+ for the outer VM)
-- KVM access (user must be in `kvm` group)
-- Patience - nested VMs take approximately **5 minutes** to start
-
-**Example workflow:**
-
-```bash
-# From within agent-vm (the outer VM)
-cd /home/user/workspace/agent-container-fix-lima/vm
-
-# Make changes to lima-provision.sh or agent-vm.yaml
-# ...
-
-# Test with nested VM (will be slow)
-sg kvm -c './agent-vm destroy'  # If testing in current session
-sg kvm -c './agent-vm start'
-sg kvm -c './agent-vm connect'
-
-# Or use integration tests
-cd ..
-sg kvm -c './test-integration.sh --vm'
-```
-
-**Note:** You may need to use `sg kvm` or `sg docker` to activate group
-memberships if your current session was established before the provision
-script ran (see PAM group initialization issue in commit history).
-
-Nested virtualization is significantly slower than host-level testing, but
-allows complete end-to-end validation without leaving the development
-environment.
-
 ## File Modification Guidelines
 
 ### Lima Template (agent-vm.yaml)
