@@ -414,14 +414,12 @@ directories with hidden files (dotfiles).
 - Tarball preserves file permissions and directory structure
 - Single atomic operation for entire config tree
 
-**Regenerating the tarball:**
+**Automatic generation:**
 
-After modifying files in `../common/homedir/`, regenerate the tarball:
-
-```bash
-cd vm
-tar -czf homedir.tar.gz -C ../common/homedir .
-```
+The `homedir.tar.gz` tarball is automatically generated from `../common/homedir/`
+during VM creation by the `agent-vm` script. You don't need to manually
+regenerate it - just modify files in `../common/homedir/` and the next VM
+creation will pick up the changes.
 
 **What gets deployed:**
 
@@ -449,8 +447,10 @@ vm/
 ├── TROUBLESHOOTING.md     # Troubleshooting guide
 ├── agent-vm.yaml          # Lima VM template
 ├── lima-provision.sh      # VM provisioning script
-├── homedir.tar.gz         # Tarball of ../common/homedir/ (regenerate after changes)
-└── agent-vm               # CLI wrapper script
+├── agent-vm               # CLI wrapper script
+├── common-packages/       # Symlink to ../common/packages/ (required by Lima)
+├── common-scripts/        # Symlink to ../common/scripts/ (required by Lima)
+└── common-homedir/        # Symlink to ../common/homedir/ (required by Lima)
 
 ../common/
 ├── homedir/               # Shared configs (deployed to VM)

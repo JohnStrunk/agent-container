@@ -189,6 +189,27 @@ GCPEOF
     template_path="$temp_template"
   fi
 
+  # Generate homedir tarball from common/homedir
+  echo "Generating homedir.tar.gz from common/homedir..."
+  local homedir_source="$SCRIPT_DIR/../common/homedir"
+  local homedir_tarball="$SCRIPT_DIR/homedir.tar.gz"
+
+  if [[ ! -d "$homedir_source" ]]; then
+    echo "ERROR: common/homedir directory not found at: $homedir_source"
+    exit 1
+  fi
+
+  # Create tarball with gzip compression, preserving permissions
+  # Use -C to change to the parent directory so paths in tarball are relative
+  tar -czpf "$homedir_tarball" -C "$homedir_source" .
+
+  if [[ ! -f "$homedir_tarball" ]]; then
+    echo "ERROR: Failed to generate homedir.tar.gz"
+    exit 1
+  fi
+
+  echo "✓ Generated: $homedir_tarball"
+
   # Start VM with Lima
   limactl start --tty=false --name="$VM_NAME" "$template_path"
 
@@ -198,6 +219,8 @@ GCPEOF
   fi
   # Clean up GCP provision script if it was created
   rm -f "$SCRIPT_DIR"/gcp-creds-provision-*.sh
+  # Clean up generated homedir tarball
+  rm -f "$SCRIPT_DIR/homedir.tar.gz"
 
   echo "✓ VM created successfully: $VM_NAME"
 }
