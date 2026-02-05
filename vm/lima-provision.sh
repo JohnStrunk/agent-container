@@ -266,6 +266,17 @@ fi
 
 usermod --add-subuids 200000-265535 --add-subgids 200000-265535 "$LIMA_USER"
 
+# Configure PAM to initialize supplementary groups for SSH sessions
+# This ensures non-interactive SSH commands have access to all user groups
+info "Configuring PAM for SSH group initialization..."
+if ! grep -q "pam_group.so" /etc/pam.d/sshd 2>/dev/null; then
+    # Add pam_group.so to SSH PAM configuration
+    sed -i '/^@include common-auth/a auth       optional   pam_group.so' /etc/pam.d/sshd
+    info "PAM group initialization configured for SSH"
+else
+    info "PAM group initialization already configured"
+fi
+
 # ==============================================================================
 # 9. Create environment marker
 # ==============================================================================
