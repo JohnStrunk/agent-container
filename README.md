@@ -11,7 +11,7 @@ approaches.
 | **Isolation** | Strong (namespaces) | Strongest (full VM) |
 | **Nested virtualization** | No | Yes (via Lima) |
 | **Resource overhead** | Minimal | Moderate |
-| **Platform support** | Linux | Linux, macOS |
+| **Platform support** | Linux, macOS, Windows | Linux, macOS, Windows |
 | **Best for** | Quick iterations, development | Testing, cross-platform |
 | **Requires** | Docker or Podman | Lima |
 
@@ -36,7 +36,7 @@ Full virtual machine isolation using Lima. Works on Linux and macOS.
 
 → **[VM Documentation](vm/README.md)**
 
-**Prerequisites:** Lima (automatically installs if missing on macOS)
+**Prerequisites:** Lima
 
 ```bash
 cd vm
@@ -47,7 +47,8 @@ cd vm
 
 Both approaches provide:
 
-- **AI Coding Agents**: Claude Code, Gemini CLI, GitHub Copilot CLI
+- **AI Coding Agents**: Claude Code, Gemini CLI, OpenCode AI, GitHub
+  Copilot
 - **Development Tools**: Git, Node.js, Python, Go, Terraform
 - **Code Quality**: pre-commit hooks, linting, formatting
 - **Isolation**: Agent cannot access host filesystem or credentials

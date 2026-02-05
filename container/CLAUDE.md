@@ -39,7 +39,7 @@ container/
 - **Base**: Debian 13 slim
 - **Container Runtime**: Docker or Podman (auto-detected)
 - **Runtime**: Node.js, Python 3, Docker CLI
-- **AI Agents**: Claude Code, Gemini CLI (installed via npm)
+- **AI Agents**: Claude Code, Gemini CLI, OpenCode AI (installed via npm)
 - **Development Tools**: Git, curl, gosu, ripgrep, jq, yq
 - **Python Tools**: pip, pipenv, poetry, pre-commit, uv
 - **Languages**: Go (v1.25.0), Python 3
@@ -86,7 +86,15 @@ Pre-commit hooks are extensively configured for:
 
 **Configuration files:**
 
-- Located in `../common/homedir/` directory
+- Located in `../common/homedir/` directory:
+  - `.claude.json` - Claude Code settings
+  - `.gitconfig` - Git configuration
+  - `.gitignore` - Git ignore patterns
+  - `.claude/settings.json` - Claude settings
+  - `.claude/statusline-command.sh` - Status line script
+  - `.claude/skills/` - Claude skills directory
+  - `.config/opencode/opencode.jsonc` - OpenCode AI configuration
+  - `.local/bin/start-claude` - Helper script
 - Built into container image at build time
 - Automatically copied to agent's home directory
 - Changes inside container are NOT persistent
@@ -112,8 +120,8 @@ design.
 
 ### Task Management
 
-**CRITICAL**: Always use the TodoWrite tool to plan and track tasks. This is
-essential for:
+**CRITICAL**: Always use task management tools (TaskCreate, TaskUpdate,
+TaskList) to plan and track tasks. This is essential for:
 
 - Breaking down complex tasks into manageable steps
 - Tracking progress throughout the session

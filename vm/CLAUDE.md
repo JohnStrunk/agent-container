@@ -21,6 +21,10 @@ vm/
 ├── agent-vm.yaml              # Lima VM template (declarative config)
 ├── lima-provision.sh          # Provisioning script (runs at first start)
 ├── agent-vm                   # CLI wrapper (all functionality inline)
+├── homedir.tar.gz             # Pre-built tarball of common/homedir/
+├── common-packages/           # Symlink to ../common/packages/
+├── common-scripts/            # Symlink to ../common/scripts/
+├── common-homedir/            # Symlink to ../common/homedir/
 ├── README.md                  # VM documentation
 ├── CLAUDE.md                  # This file
 └── TROUBLESHOOTING.md         # Debugging guide
@@ -29,8 +33,17 @@ vm/
 ├── homedir/                   # Shared configs (deployed to VM)
 │   ├── .claude.json
 │   ├── .gitconfig
-│   ├── .claude/settings.json
-│   └── .local/bin/start-claude
+│   ├── .gitignore
+│   ├── .claude/
+│   │   ├── settings.json
+│   │   ├── statusline-command.sh
+│   │   └── skills/
+│   ├── .config/
+│   │   └── opencode/
+│   │       └── opencode.jsonc
+│   └── .local/
+│       └── bin/
+│           └── start-claude
 ├── packages/                  # Package lists (used in provisioning)
 │   ├── apt-packages.txt
 │   ├── npm-packages.txt
@@ -47,9 +60,42 @@ vm/
 - **VM Backend**: QEMU (cross-platform)
 - **VM OS**: Debian 13 (Trixie)
 - **File Sharing**: SSHFS (forward mount, host to VM)
-- **AI Agents**: Claude Code, Gemini CLI, GitHub Copilot
+- **AI Agents**: Claude Code, Gemini CLI, OpenCode AI, GitHub Copilot
 - **Development Tools**: Git, Node.js, Python, Go, Docker, Podman,
   Lima (nested)
+
+### Package Management
+
+Package lists are shared between container and VM approaches via
+`common/packages/`:
+
+- `apt-packages.txt` - Debian packages (base utilities)
+- `npm-packages.txt` - Node.js packages (AI agents, tools)
+- `python-packages.txt` - Python packages (pre-commit, poetry, etc.)
+- `versions.txt` - Version pins (Go, hadolint, etc.)
+- `envvars.txt` - Environment variables to pass through
+
+VM-specific packages (docker.io, podman, qemu, etc.) are defined
+separately in `lima-provision.sh` since they're not needed in
+containers.
+
+### Provisioning Architecture
+
+The provisioning script (`lima-provision.sh`) reads configuration from
+`common/` directory:
+
+1. **Symlinks in vm/ directory** - The `vm/` directory contains symlinks
+   (`common-packages`, `common-scripts`, `common-homedir`) pointing to
+   `../common/` to allow Lima's `file:` property to reference files
+   relatively
+2. **Package lists** - Lima copies files from `common/packages/*.txt`
+   using `mode: data` in the template
+3. **Version pins** - Sourced from `common/packages/versions.txt`
+4. **Homedir configs** - Packaged as `homedir.tar.gz`, deployed and
+   extracted in VM
+5. **Tool installation** - Uses `common/scripts/install-tools.sh`
+
+This ensures container and VM approaches stay synchronized.
 
 ## Development Workflow
 
@@ -108,7 +154,8 @@ Multiple branches work in the same VM:
 
 ### Task Management
 
-Use TodoWrite tool for complex tasks to track progress.
+Use task management tools (TaskCreate, TaskUpdate, TaskList) for
+complex tasks to track progress.
 
 ### Pre-commit Quality Checks
 

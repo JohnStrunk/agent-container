@@ -29,6 +29,53 @@ portForwards: []
 
 # Provisioning scripts
 provision:
+  # Copy package lists to VM (mode: data embeds file content)
+  - mode: data
+    path: /tmp/apt-packages.txt
+    file: common-packages/apt-packages.txt
+  - mode: data
+    path: /tmp/npm-packages.txt
+    file: common-packages/npm-packages.txt
+  - mode: data
+    path: /tmp/python-packages.txt
+    file: common-packages/python-packages.txt
+  - mode: data
+    path: /tmp/versions.txt
+    file: common-packages/versions.txt
+  - mode: data
+    path: /tmp/envvars.txt
+    file: common-packages/envvars.txt
+  # Copy installation scripts
+  - mode: data
+    path: /tmp/install-tools.sh
+    file: common-scripts/install-tools.sh
+    permissions: "0755"
+  # Copy homedir configuration (tarball, extracted by provision script)
+  - mode: data
+    path: /tmp/homedir.tar.gz
+    file: homedir.tar.gz
+
+  # Extract homedir tarball to /tmp/homedir before main provisioning
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -e -o pipefail
+      echo "[INFO] Extracting homedir configuration..."
+      mkdir -p /tmp/homedir
+
+      # Extract with explicit permission preservation (-p flag)
+      tar -xzpf /tmp/homedir.tar.gz -C /tmp/homedir
+
+      # Verify extraction succeeded by checking for sentinel file
+      if [ ! -f /tmp/homedir/.claude.json ]; then
+        echo "[ERROR] Tarball extraction failed - .claude.json not found"
+        exit 1
+      fi
+
+      echo "[INFO] Tarball extraction verified successfully"
+      rm -f /tmp/homedir.tar.gz
+      echo "[INFO] Homedir extracted to /tmp/homedir"
+
   # System-level provisioning
   # Note: Lima reads the file from template directory and embeds it
   - mode: system
@@ -42,21 +89,6 @@ provision:
 
       # Create workspace directory
       mkdir -p ~/workspace
-
-      # Install Claude Code (must run as user, not root)
-      echo "[INFO] Installing Claude Code..."
-      curl -fsSL https://claude.ai/install.sh | bash
-
-      # Add ~/.local/bin to PATH in bashrc (idempotent)
-      path_export='export PATH="$HOME/.local/bin:$PATH"'
-      if ! grep -q "$path_export" ~/.bashrc 2>/dev/null; then
-        echo "$path_export" >> ~/.bashrc
-      fi
-
-      # Set default directory in bashrc (idempotent)
-      if ! grep -q "cd ~/workspace" ~/.bashrc 2>/dev/null; then
-        echo "cd ~/workspace" >> ~/.bashrc
-      fi
 
 # Firmware (default UEFI)
 firmware:

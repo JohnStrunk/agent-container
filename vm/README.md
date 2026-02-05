@@ -17,7 +17,8 @@ directories. The VM comes pre-configured with:
 
 - **Claude Code** - Anthropic's AI coding assistant
 - **Gemini CLI** - Google's Gemini CLI
-- **GitHub Copilot CLI** - GitHub's AI coding assistant
+- **OpenCode AI** - Open-source AI coding assistant
+- **GitHub Copilot** - GitHub's AI coding assistant
 - **Development tools** - Git, Node.js, Python, Docker, Podman, and more
 - **Code quality tools** - pre-commit, hadolint, pipenv, poetry
 - **Nested VM support** - Lima pre-installed for nested virtualization
@@ -397,6 +398,48 @@ automatically create it from current HEAD:
 ./agent-vm connect new-feature
 ```
 
+## Homedir Configuration Management
+
+### Tarball Approach
+
+The VM uses a tarball (`homedir.tar.gz`) to deploy configuration files from
+`../common/homedir/` because Lima's `mode: data` doesn't fully support
+directories with hidden files (dotfiles).
+
+**Why use a tarball:**
+
+- Lima's `mode: data` can copy individual files but struggles with nested
+  directory structures
+- Hidden files (`.claude.json`, `.gitconfig`, etc.) need special handling
+- Tarball preserves file permissions and directory structure
+- Single atomic operation for entire config tree
+
+**Regenerating the tarball:**
+
+After modifying files in `../common/homedir/`, regenerate the tarball:
+
+```bash
+cd vm
+tar -czf homedir.tar.gz -C ../common/homedir .
+```
+
+**What gets deployed:**
+
+- `.claude.json` - Claude Code settings
+- `.gitconfig` - Git configuration
+- `.gitignore` - Git ignore patterns
+- `.claude/settings.json` - Claude settings
+- `.claude/statusline-command.sh` - Status line script
+- `.claude/skills/` - Claude skills directory
+- `.config/opencode/opencode.jsonc` - OpenCode AI configuration
+- `.local/bin/start-claude` - Helper script
+
+**Extraction verification:**
+
+The provisioning script verifies extraction succeeded by checking for
+`.claude.json` as a sentinel file. If this file is missing after extraction,
+provisioning fails with a clear error message.
+
 ## File Structure
 
 ```text
@@ -406,13 +449,24 @@ vm/
 ├── TROUBLESHOOTING.md     # Troubleshooting guide
 ├── agent-vm.yaml          # Lima VM template
 ├── lima-provision.sh      # VM provisioning script
+├── homedir.tar.gz         # Tarball of ../common/homedir/ (regenerate after changes)
 └── agent-vm               # CLI wrapper script
 
 ../common/
 ├── homedir/               # Shared configs (deployed to VM)
 │   ├── .claude.json
 │   ├── .gitconfig
-│   └── .local/bin/start-claude
+│   ├── .gitignore
+│   ├── .claude/
+│   │   ├── settings.json
+│   │   ├── statusline-command.sh
+│   │   └── skills/
+│   ├── .config/
+│   │   └── opencode/
+│   │       └── opencode.jsonc
+│   └── .local/
+│       └── bin/
+│           └── start-claude
 ├── packages/              # Package lists (used in provisioning)
 │   ├── apt-packages.txt
 │   ├── npm-packages.txt
