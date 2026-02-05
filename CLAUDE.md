@@ -121,7 +121,11 @@ source of truth** for configuration:
   directory
   - `.claude.json` - Claude Code settings
   - `.gitconfig` - Git configuration
+  - `.gitignore` - Git ignore patterns
   - `.claude/settings.json` - Claude settings
+  - `.claude/statusline-command.sh` - Status line script
+  - `.claude/skills/` - Claude skills directory
+  - `.config/opencode/opencode.jsonc` - OpenCode AI configuration
   - `.local/bin/start-claude` - Helper script
 - `common/packages/` - Package lists and version pins
   - `apt-packages.txt` - Debian packages
@@ -138,7 +142,8 @@ approaches.
 
 ## General Guidelines
 
-- Use TodoWrite tool for complex multi-step tasks
+- Use task management tools (TaskCreate, TaskUpdate, TaskList) for
+  complex multi-step tasks
 - Run pre-commit checks after all changes
 - Follow approach-specific testing procedures
 - Commit frequently with descriptive messages

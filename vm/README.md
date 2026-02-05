@@ -17,7 +17,8 @@ directories. The VM comes pre-configured with:
 
 - **Claude Code** - Anthropic's AI coding assistant
 - **Gemini CLI** - Google's Gemini CLI
-- **GitHub Copilot CLI** - GitHub's AI coding assistant
+- **OpenCode AI** - Open-source AI coding assistant
+- **GitHub Copilot** - GitHub's AI coding assistant
 - **Development tools** - Git, Node.js, Python, Docker, Podman, and more
 - **Code quality tools** - pre-commit, hadolint, pipenv, poetry
 - **Nested VM support** - Lima pre-installed for nested virtualization
@@ -418,7 +419,7 @@ directories with hidden files (dotfiles).
 After modifying files in `../common/homedir/`, regenerate the tarball:
 
 ```bash
-cd /home/jstrunk.linux/workspace/agent-container-fix-lima/vm
+cd vm
 tar -czf homedir.tar.gz -C ../common/homedir .
 ```
 
@@ -426,7 +427,11 @@ tar -czf homedir.tar.gz -C ../common/homedir .
 
 - `.claude.json` - Claude Code settings
 - `.gitconfig` - Git configuration
+- `.gitignore` - Git ignore patterns
 - `.claude/settings.json` - Claude settings
+- `.claude/statusline-command.sh` - Status line script
+- `.claude/skills/` - Claude skills directory
+- `.config/opencode/opencode.jsonc` - OpenCode AI configuration
 - `.local/bin/start-claude` - Helper script
 
 **Extraction verification:**
@@ -451,7 +456,17 @@ vm/
 ├── homedir/               # Shared configs (deployed to VM)
 │   ├── .claude.json
 │   ├── .gitconfig
-│   └── .local/bin/start-claude
+│   ├── .gitignore
+│   ├── .claude/
+│   │   ├── settings.json
+│   │   ├── statusline-command.sh
+│   │   └── skills/
+│   ├── .config/
+│   │   └── opencode/
+│   │       └── opencode.jsonc
+│   └── .local/
+│       └── bin/
+│           └── start-claude
 ├── packages/              # Package lists (used in provisioning)
 │   ├── apt-packages.txt
 │   ├── npm-packages.txt

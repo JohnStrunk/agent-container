@@ -17,7 +17,8 @@ container comes pre-configured with:
 
 - **Claude Code** - Anthropic's AI coding assistant
 - **Gemini CLI** - Google's Gemini CLI
-- **GitHub Copilot CLI** - GitHub's AI coding assistant
+- **OpenCode AI** - Open-source AI coding assistant
+- **GitHub Copilot** - GitHub's AI coding assistant
 - **Development tools** - Git, Node.js, Python, Docker CLI, and more
 - **Code quality tools** - pre-commit, hadolint, pipenv, poetry
 
@@ -199,7 +200,12 @@ The credential file is:
 - `../common/homedir/` - Shared configuration files (built into container)
   - `.claude.json` - Claude Code settings
   - `.gitconfig` - Git configuration
-  - `start-claude` - Helper script
+  - `.gitignore` - Git ignore patterns
+  - `.claude/settings.json` - Claude settings
+  - `.claude/statusline-command.sh` - Status line script
+  - `.claude/skills/` - Claude skills directory
+  - `.config/opencode/opencode.jsonc` - OpenCode AI configuration
+  - `.local/bin/start-claude` - Helper script
 - `../common/packages/` - Package lists (used during build)
   - `apt-packages.txt` - Debian packages
   - `npm-packages.txt` - Node.js packages
