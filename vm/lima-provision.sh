@@ -28,35 +28,75 @@ fi
 info "Provisioning VM for user: $LIMA_USER"
 
 # ==============================================================================
-# Package lists (embedded from common/packages/*.txt)
+# Verify file availability (files copied via mode:data in agent-vm.yaml)
 # ==============================================================================
+info "Verifying files copied via Lima mode:data..."
 
-# APT packages
-APT_PACKAGES=(
-    # Base utilities
-    bc ca-certificates curl bind9-dnsutils findutils g++ gh git gnupg
-    gosu jq less lsb-release lsof make man-db nodejs npm procps psmisc
-    python3 python3-pip ripgrep rsync shellcheck shfmt socat sshfs
-    tcl tk unzip vim yq
+# List files we expect to find in /tmp
+expected_files=(
+    "/tmp/apt-packages.txt"
+    "/tmp/npm-packages.txt"
+    "/tmp/python-packages.txt"
+    "/tmp/versions.txt"
+    "/tmp/envvars.txt"
+    "/tmp/install-tools.sh"
+    "/tmp/homedir/.claude.json"
+    "/tmp/homedir/.gitconfig"
+    "/tmp/homedir/.claude/settings.json"
+    "/tmp/homedir/.local/bin/start-claude"
 )
 
-# VM-specific packages
+missing_count=0
+for file in "${expected_files[@]}"; do
+    if [ -e "$file" ]; then
+        info "  ✓ Found: $file"
+    else
+        echo "[ERROR]   ✗ Missing: $file" >&2
+        missing_count=$((missing_count + 1))
+    fi
+done
+
+if [ $missing_count -gt 0 ]; then
+    error "Missing $missing_count expected file(s). Lima mode:data copy failed."
+fi
+
+info "All expected files verified in /tmp/"
+
+# ==============================================================================
+# Package lists (sourced from common/packages/*.txt)
+# ==============================================================================
+info "Reading package lists from common directory..."
+
+# Verify package list files exist
+for file in apt-packages.txt npm-packages.txt python-packages.txt versions.txt; do
+    if [ ! -f "/tmp/$file" ]; then
+        error "Package list not found: /tmp/$file"
+    fi
+done
+
+# Source version numbers
+# shellcheck source=/dev/null
+source /tmp/versions.txt
+
+# Read APT packages (filter comments and blank lines)
+mapfile -t APT_PACKAGES < <(grep -v '^#' /tmp/apt-packages.txt | grep -v '^$')
+
+# VM-specific packages (not in common, only needed in VM)
 VM_PACKAGES=(
-    docker.io podman qemu-system-x86 qemu-utils qemu-guest-agent wget htop
+    docker.io
+    podman
+    qemu-system-x86
+    qemu-utils
+    qemu-guest-agent
+    wget
+    htop
 )
 
-# NPM packages
-NPM_PACKAGES=(
-    "@github/copilot@latest"
-    "@google/gemini-cli@latest"
-    "opencode-ai"
-    "prettier"
-)
+# Read NPM packages (filter comments and blank lines)
+mapfile -t NPM_PACKAGES < <(grep -v '^#' /tmp/npm-packages.txt | grep -v '^$')
 
-# Python packages
-PYTHON_PACKAGES=(
-    "pre-commit"
-)
+# Read Python packages (filter comments and blank lines)
+mapfile -t PYTHON_PACKAGES < <(grep -v '^#' /tmp/python-packages.txt | grep -v '^$')
 
 # ==============================================================================
 # 1. Install system packages
@@ -110,10 +150,12 @@ done
 # ==============================================================================
 info "Installing additional tools..."
 
-# Install Go
-GO_VERSION="1.23.5"
-info "Installing Go $GO_VERSION..."
-curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -C /usr/local -xzf -
+# Install Go (version from common/packages/versions.txt)
+info "Installing Go $GOLANG_VERSION..."
+if [ -z "$GOLANG_VERSION" ]; then
+    error "GOLANG_VERSION not set (should be sourced from versions.txt)"
+fi
+curl -fsSL "https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz" | tar -C /usr/local -xzf -
 
 # Configure Go PATH and user local bin
 mkdir -p /etc/profile.d
@@ -128,70 +170,55 @@ export PATH="$HOME/.local/bin:$PATH"
 EOF
 chmod 644 /etc/profile.d/user-local-bin.sh
 
-# Install hadolint
-HADOLINT_VERSION="2.12.0"
+# Install hadolint (version from common/packages/versions.txt)
 info "Installing hadolint $HADOLINT_VERSION..."
+if [ -z "$HADOLINT_VERSION" ]; then
+    error "HADOLINT_VERSION not set (should be sourced from versions.txt)"
+fi
 curl -fsSL "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint
 chmod +x /usr/local/bin/hadolint
 
-# Note: Claude Code installation moved to user-level provision in agent-vm.yaml
-# to ensure it installs to the user's ~/.local/bin
+# Install Claude Code and other common tools
+info "Installing common tools (Claude Code)..."
+chmod +x /tmp/install-tools.sh
+/tmp/install-tools.sh
 
 # ==============================================================================
-# 6. Copy homedir configuration files
+# 6. Deploy home directory configuration files
 # ==============================================================================
-info "Setting up user home directory configuration..."
+info "Deploying home directory configuration from common/homedir/..."
 
 USER_HOME=$(getent passwd "$LIMA_USER" | cut -d: -f6)
 if [ -z "$USER_HOME" ] || [ ! -d "$USER_HOME" ]; then
     error "User home directory not found for: $LIMA_USER"
 fi
 
-# Create .claude directory structure
-mkdir -p "$USER_HOME/.claude"
-mkdir -p "$USER_HOME/.local/bin"
+# Verify homedir files were copied to VM
+if [ ! -d /tmp/homedir ]; then
+    error "common/homedir not found at /tmp/homedir"
+fi
 
-# Create .claude.json
-cat > "$USER_HOME/.claude.json" <<'EOF'
-{
-  "defaultSession": "default",
-  "defaultModel": "claude-sonnet-4-5-20250929"
-}
-EOF
+# Copy all files from common/homedir to user home
+# Preserve directory structure and permissions
+info "Copying configuration files to $USER_HOME..."
+cp -r /tmp/homedir/. "$USER_HOME/"
 
-# Create .claude/settings.json
-cat > "$USER_HOME/.claude/settings.json" <<'EOF'
-{
-  "betaTools": ["read", "edit", "write", "task", "bash", "glob", "grep", "webFetch", "webSearch"]
-}
-EOF
+# Ensure .local/bin scripts are executable
+if [ -d "$USER_HOME/.local/bin" ]; then
+    find "$USER_HOME/.local/bin" -type f -exec chmod +x {} +
+fi
 
-# Create .gitconfig
-cat > "$USER_HOME/.gitconfig" <<'EOF'
-[init]
-    defaultBranch = main
-[core]
-    editor = vim
-[user]
-    name = Agent User
-    email = agent@localhost
-[pull]
-    rebase = false
-EOF
-
-# Create start-claude helper script
-cat > "$USER_HOME/.local/bin/start-claude" <<'EOF'
-#!/bin/bash
-exec claude "$@"
-EOF
-chmod +x "$USER_HOME/.local/bin/start-claude"
+# Ensure .claude scripts are executable
+if [ -d "$USER_HOME/.claude" ]; then
+    find "$USER_HOME/.claude" -type f -name "*.sh" -exec chmod +x {} +
+fi
 
 # Set ownership
 USER_UID=$(id -u "$LIMA_USER")
 USER_GID=$(id -g "$LIMA_USER")
 chown -R "$USER_UID:$USER_GID" "$USER_HOME"
 
-info "Home directory configuration complete"
+info "Home directory configuration deployed from common/homedir/"
 
 # ==============================================================================
 # 7. Inject GCP credentials if provided
@@ -238,6 +265,14 @@ if getent group kvm > /dev/null; then
 fi
 
 usermod --add-subuids 200000-265535 --add-subgids 200000-265535 "$LIMA_USER"
+
+# Kill any existing SSH sessions so they reconnect with new group memberships
+# Lima establishes SSH connections during/after cloud-init but BEFORE this provision
+# script runs. Those sessions won't have the docker/kvm/podman groups added above.
+# Killing them forces Lima to reconnect, picking up the new groups.
+info "Restarting SSH to activate group memberships..."
+pkill -u "$LIMA_USER" sshd || true
+systemctl reload sshd || systemctl restart sshd
 
 # ==============================================================================
 # 9. Create environment marker

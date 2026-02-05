@@ -24,14 +24,16 @@ case "$PLATFORM" in
 esac
 
 function vm_exists {
-  limactl list --format json 2>/dev/null | grep -q "\"name\":\"$VM_NAME\""
+  # Use text format instead of JSON to work around Lima 2.0.3 bug with embedded binary data
+  limactl list 2>/dev/null | awk 'NR>1 {print $1}' | grep -q "^${VM_NAME}$"
 }
 
 function vm_is_running {
   if ! vm_exists; then
     return 1
   fi
-  limactl list --format json 2>/dev/null | grep "\"name\":\"$VM_NAME\"" | grep -q "\"status\":\"Running\""
+  # Use text format instead of JSON to work around Lima 2.0.3 bug with embedded binary data
+  limactl list 2>/dev/null | awk -v name="$VM_NAME" 'NR>1 && $1==name {print $2}' | grep -q "^Running$"
 }
 
 function get_vm_home {
@@ -244,33 +246,21 @@ function show_status {
     echo "  State: Stopped"
   fi
 
-  # Get VM info from limactl
-  local vm_info
-  vm_info=$(limactl list --format json 2>/dev/null | grep -A 20 "\"name\":\"$VM_NAME\"" || echo "")
+  # Get VM info from limactl (use text format instead of JSON to work around Lima 2.0.3 bug)
+  local vm_line
+  vm_line=$(limactl list 2>/dev/null | awk -v name="$VM_NAME" 'NR>1 && $1==name {print}')
 
-  # Extract resources if available
-  if [[ -n "$vm_info" ]]; then
+  # Extract resources if VM found
+  if [[ -n "$vm_line" ]]; then
     local cpus memory disk
-    cpus=$(echo "$vm_info" | grep -o '"cpus":[0-9]*' | cut -d: -f2 || echo "N/A")
-    memory=$(echo "$vm_info" | grep -o '"memory":[0-9]*' | cut -d: -f2 || echo "N/A")
-    disk=$(echo "$vm_info" | grep -o '"disk":[0-9]*' | cut -d: -f2 || echo "N/A")
+    cpus=$(echo "$vm_line" | awk '{print $4}')
+    memory=$(echo "$vm_line" | awk '{print $5}')
+    disk=$(echo "$vm_line" | awk '{print $6}')
 
     echo "  Resources:"
     echo "    CPUs: $cpus"
-    if [[ "$memory" != "N/A" ]]; then
-      # Convert bytes to GiB
-      memory_gib=$((memory / 1024 / 1024 / 1024))
-      echo "    Memory: ${memory_gib} GiB"
-    else
-      echo "    Memory: N/A"
-    fi
-    if [[ "$disk" != "N/A" ]]; then
-      # Convert bytes to GiB
-      disk_gib=$((disk / 1024 / 1024 / 1024))
-      echo "    Disk: ${disk_gib} GiB"
-    else
-      echo "    Disk: N/A"
-    fi
+    echo "    Memory: $memory"
+    echo "    Disk: $disk"
   fi
 
   echo ""
