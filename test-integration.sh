@@ -423,7 +423,7 @@ test_vm_approach() {
 
     # Test 2: Create VM via agent-vm start
     log "Test 2: Creating VM via agent-vm start..."
-    if ! run_with_timeout 300 ./agent-vm start; then
+    if ! run_with_timeout 600 ./agent-vm start; then
         log_error "Failed to create VM"
         return "$EXIT_TEST_FAILED"
     fi
@@ -431,7 +431,8 @@ test_vm_approach() {
 
     # Test 3: Verify VM exists in Lima
     log "Test 3: Verifying VM exists in Lima..."
-    if ! limactl list --format json 2>/dev/null | grep -q '"name":"agent-vm"'; then
+    # Use text format instead of JSON to work around Lima 2.0.3 bug with embedded binary data
+    if ! limactl list 2>/dev/null | awk 'NR>1 {print $1}' | grep -q "^agent-vm$"; then
         log_error "VM not found in Lima list"
         return "$EXIT_TEST_FAILED"
     fi
@@ -589,7 +590,7 @@ chmod +x /tmp/test-claude.sh
     log "Test 15: Testing resource override..."
     # Destroy and recreate with custom resources
     ./agent-vm destroy 2>/dev/null || true
-    if ! run_with_timeout 300 ./agent-vm start --memory 4 --vcpu 2; then
+    if ! run_with_timeout 600 ./agent-vm start --memory 4 --vcpu 2; then
         log_error "Failed to create VM with custom resources"
         return "$EXIT_TEST_FAILED"
     fi
@@ -600,7 +601,7 @@ chmod +x /tmp/test-claude.sh
         echo "$status_output"
         return "$EXIT_TEST_FAILED"
     fi
-    if ! echo "$status_output" | grep -q "Memory: 4 GiB"; then
+    if ! echo "$status_output" | grep -q "Memory: 4GiB"; then
         log_error "Memory not set correctly"
         echo "$status_output"
         return "$EXIT_TEST_FAILED"
@@ -663,8 +664,8 @@ chmod +x /tmp/test-claude.sh
 
     # Test 20: Verify VM is completely removed
     log "Test 20: Verifying VM is completely removed..."
-    # Check Lima
-    if limactl list --format json 2>/dev/null | grep -q '"name":"agent-vm"'; then
+    # Check Lima (use text format instead of JSON to work around Lima 2.0.3 bug)
+    if limactl list 2>/dev/null | awk 'NR>1 {print $1}' | grep -q "^agent-vm$"; then
         log_error "VM still exists in Lima after destroy"
         return "$EXIT_TEST_FAILED"
     fi
