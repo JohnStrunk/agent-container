@@ -23,6 +23,23 @@ pwd
 - If in `/path/to/repo/vm` → Use VM approach (`agent-vm` command)
 - If at root `/path/to/repo` → Ask user which approach they want
 
+## Determining Your Execution Environment
+
+To determine whether you're running on the host, inside a VM, or inside a
+container:
+
+```bash
+cat /etc/agent-environment 2>/dev/null || echo "host"
+```
+
+- `agent-vm` → Running inside a Lima VM
+- `agent-container` → Running inside a Docker container
+- `host` → Running on the host machine
+
+This is useful when developing this repository itself, as the VM and
+container environments support nested virtualization/containers for
+testing changes.
+
 ## Approach-Specific Documentation
 
 **Container Approach:**
@@ -47,6 +64,59 @@ This validates that AI assistants can start and operate correctly after your
 changes.
 
 See design: `docs/plans/2026-01-05-integration-tests-design.md`
+
+## Developing This Repository
+
+This repository is frequently developed from within the VM or container
+environments themselves. Both support nested virtualization/containers for
+testing changes:
+
+### Nested VM Testing
+
+When working inside a VM (`cat /etc/agent-environment` shows `agent-vm`),
+you can test VM provisioning changes using nested virtualization:
+
+**Memory requirements:**
+
+- Outer VM needs enough memory for nested VM's default allocation (8GB)
+- Recommended: 16GB for outer VM to comfortably run nested VM with
+  defaults
+- Adjust with `./agent-vm start --memory <GB>` if needed
+
+**Startup time:**
+
+- Nested VMs take approximately **5 minutes** to start (vs seconds for
+  host-level VMs)
+- This is due to nested virtualization overhead
+
+**Example workflow:**
+
+```bash
+# Check you're in the VM
+cat /etc/agent-environment  # Should show: agent-vm
+
+# Navigate to VM directory
+cd ~/workspace/agent-container-fix-lima/vm
+
+# Make changes to lima-provision.sh or agent-vm.yaml
+# ...
+
+# Test with nested VM (will be slow)
+./agent-vm destroy  # Clean up previous test VM
+./agent-vm start
+./agent-vm connect
+# Verify your changes work
+exit
+
+# Or run integration tests
+cd ..
+./test-integration.sh --vm
+```
+
+### Nested Container Testing
+
+When working inside a container, Docker-in-Docker is supported for testing
+container changes. See `container/CLAUDE.md` for details.
 
 ## Common Resources
 
