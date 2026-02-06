@@ -136,11 +136,36 @@ jobs:
           docker build $build_flags -t ghcr.io/johnstrunk/agent-container \
             -f Dockerfile ..
 
+  # This job builds the agent container on macOS with Docker to verify ARM64
+  build-agent-container-macos-docker:
+    name: "Build agent container on macOS with Docker"
+    runs-on: macos-14  # ARM64 M1 runner
+
+    steps:
+      - name: Checkout repository
+        # https://github.com/actions/checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Docker
+        # https://github.com/douglascamata/setup-docker-macos-action
+        uses: douglascamata/setup-docker-macos-action@main
+
+      - name: Build image with Docker
+        run: |
+          cd container
+          source lib/container-runtime.sh
+          CONTAINER_RUNTIME=docker
+          build_flags=$(get_build_flags "$CONTAINER_RUNTIME")
+          # shellcheck disable=SC2086
+          docker build $build_flags -t ghcr.io/johnstrunk/agent-container \
+            -f Dockerfile ..
+
   # This is a dummy job to determine success of the CI workflow
   ci-success:
     name: CI Workflow - Success
     needs:
       - build-agent-container-docker
+      - build-agent-container-macos-docker
       - build-agent-container-podman
       - devcontainer
       - pre-commit
