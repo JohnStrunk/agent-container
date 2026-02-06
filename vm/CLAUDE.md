@@ -21,10 +21,9 @@ vm/
 ├── agent-vm.yaml              # Lima VM template (declarative config)
 ├── lima-provision.sh          # Provisioning script (runs at first start)
 ├── agent-vm                   # CLI wrapper (all functionality inline)
-├── homedir.tar.gz             # Pre-built tarball of common/homedir/
-├── common-packages/           # Symlink to ../common/packages/
-├── common-scripts/            # Symlink to ../common/scripts/
-├── common-homedir/            # Symlink to ../common/homedir/
+├── common-packages/           # Symlink to ../common/packages/ (required by Lima)
+├── common-scripts/            # Symlink to ../common/scripts/ (required by Lima)
+├── common-homedir/            # Symlink to ../common/homedir/ (required by Lima)
 ├── README.md                  # VM documentation
 ├── CLAUDE.md                  # This file
 └── TROUBLESHOOTING.md         # Debugging guide
@@ -84,15 +83,16 @@ containers.
 The provisioning script (`lima-provision.sh`) reads configuration from
 `common/` directory:
 
-1. **Symlinks in vm/ directory** - The `vm/` directory contains symlinks
-   (`common-packages`, `common-scripts`, `common-homedir`) pointing to
-   `../common/` to allow Lima's `file:` property to reference files
-   relatively
+1. **Symlinks** - The `vm/` directory contains symlinks (`common-packages`,
+   `common-scripts`, `common-homedir`) pointing to `../common/` directories.
+   These are required because Lima's `file:` property doesn't support `../`
+   in paths.
 2. **Package lists** - Lima copies files from `common/packages/*.txt`
-   using `mode: data` in the template
+   using `mode: data` in the template (referenced via symlinks)
 3. **Version pins** - Sourced from `common/packages/versions.txt`
-4. **Homedir configs** - Packaged as `homedir.tar.gz`, deployed and
-   extracted in VM
+4. **Homedir configs** - Dynamically generated as `homedir.tar.gz` from
+   `../common/homedir/` during VM creation by the `agent-vm` script,
+   then deployed and extracted in VM
 5. **Tool installation** - Uses `common/scripts/install-tools.sh`
 
 This ensures container and VM approaches stay synchronized.

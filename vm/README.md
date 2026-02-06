@@ -59,36 +59,54 @@ directories. The VM comes pre-configured with:
 
 ### Install Lima
 
-**Linux (Debian/Ubuntu):**
+**Linux:**
+
+Homebrew (recommended):
 
 ```bash
-# Add Lima repository
-sudo apt-get update
-sudo apt-get install -y curl
-curl -fsSL https://lima-vm.io/lima.gpg | sudo apt-key add -
-echo "deb https://lima-vm.io/deb/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/lima.list
+brew install lima
+```
 
-# Install Lima
-sudo apt-get update
-sudo apt-get install -y lima
+Binary installation from GitHub releases:
 
-# Verify installation
-limactl --version
+```bash
+# Automatically downloads the latest version
+REPO="https://api.github.com/repos/lima-vm/lima/releases/latest"
+VERSION=$(curl -fsSL "$REPO" | jq -r .tag_name)
+BASE="https://github.com/lima-vm/lima/releases/download"
+ARCH="lima-${VERSION:1}-$(uname -s)-$(uname -m).tar.gz"
+curl -fsSL "${BASE}/${VERSION}/${ARCH}" | sudo tar Cxzvm /usr/local
+```
+
+Package managers (if available):
+
+```bash
+# Arch Linux
+sudo pacman -S lima
+
+# Nix
+nix-env -i lima
 ```
 
 **macOS:**
 
 ```bash
-# Install via Homebrew
+# Homebrew (recommended)
 brew install lima
 
-# Verify installation
-limactl --version
+# Or MacPorts
+sudo port install lima
 ```
 
 **Windows (WSL2):**
 
 Install within WSL2 environment using Linux instructions above.
+
+**Verify installation:**
+
+```bash
+limactl --version
+```
 
 ### Install SSHFS
 
@@ -101,7 +119,11 @@ sudo apt-get install -y sshfs
 **macOS:**
 
 ```bash
+# macFUSE is required for SSHFS
+brew install macfuse
 brew install sshfs
+
+# Note: You may need to restart macOS after installing macFUSE
 ```
 
 **Windows (WSL2):**
@@ -113,7 +135,7 @@ Install within WSL2 using Linux instructions above.
 1. **Navigate to the vm directory:**
 
    ```bash
-   cd agent-container-lima/vm
+   cd vm
    ```
 
 2. **Create/connect to a workspace:**
@@ -328,7 +350,7 @@ for testing VM workflows or further isolation.
 limactl start default
 
 # Or use the agent-vm script inside the VM
-cd /path/to/agent-container-lima/vm
+cd ~/workspace/<your-repo>/vm
 ./agent-vm start
 ```
 
@@ -353,8 +375,8 @@ complete independence between workspaces.
 
 Workspace naming: `<repo>-<branch>`
 
-Example: For repository `agent-container-lima` and branch `feature-auth`,
-the workspace is `agent-container-lima-feature-auth`.
+Example: For repository `my-project` and branch `feature-auth`, the
+workspace is `my-project-feature-auth`.
 
 ### Push Operation
 
@@ -414,14 +436,12 @@ directories with hidden files (dotfiles).
 - Tarball preserves file permissions and directory structure
 - Single atomic operation for entire config tree
 
-**Regenerating the tarball:**
+**Automatic generation:**
 
-After modifying files in `../common/homedir/`, regenerate the tarball:
-
-```bash
-cd vm
-tar -czf homedir.tar.gz -C ../common/homedir .
-```
+The `homedir.tar.gz` tarball is automatically generated from `../common/homedir/`
+during VM creation by the `agent-vm` script. You don't need to manually
+regenerate it - just modify files in `../common/homedir/` and the next VM
+creation will pick up the changes.
 
 **What gets deployed:**
 
@@ -449,8 +469,10 @@ vm/
 ├── TROUBLESHOOTING.md     # Troubleshooting guide
 ├── agent-vm.yaml          # Lima VM template
 ├── lima-provision.sh      # VM provisioning script
-├── homedir.tar.gz         # Tarball of ../common/homedir/ (regenerate after changes)
-└── agent-vm               # CLI wrapper script
+├── agent-vm               # CLI wrapper script
+├── common-packages/       # Symlink to ../common/packages/ (required by Lima)
+├── common-scripts/        # Symlink to ../common/scripts/ (required by Lima)
+└── common-homedir/        # Symlink to ../common/homedir/ (required by Lima)
 
 ../common/
 ├── homedir/               # Shared configs (deployed to VM)
@@ -520,7 +542,7 @@ SSHFS (VM mounts host directories) because:
 | Aspect | Container | VM |
 | --- | --- | --- |
 | **Isolation** | Container (namespace) | Full VM (KVM/QEMU) |
-| **Startup** | Fast (~1-5s) | Slower (~10-30s) |
+| **Startup** | Fast (~2s) | Slower (~4 minutes) |
 | **Resources** | Lightweight | Heavier (VM overhead) |
 | **File Sharing** | Bind mounts | Forward SSHFS |
 | **Nested VMs** | Limited | Full (Lima installed) |
@@ -542,65 +564,6 @@ SSHFS (VM mounts host directories) because:
 - Heavy workloads (builds, tests)
 - Platform without Docker/Podman
 - macOS development
-
-## Migration from Terraform Version
-
-### Breaking Changes
-
-The Lima migration is a **breaking change**. You must destroy your existing
-Terraform-based VMs and recreate with Lima.
-
-**What changed:**
-
-1. **CLI interface** - New command structure (see Usage section)
-2. **SSH keys** - Lima manages keys automatically (old keys discarded)
-3. **VM IP addressing** - Dynamic instead of static (transparent via Lima)
-4. **State location** - Moved from `vm/terraform.tfstate` to `~/.lima/agent-vm/`
-5. **Resource specification** - Use `./agent-vm start --memory N --vcpu M`
-   instead of command-line flags during connect
-
-**What stayed the same:**
-
-1. **Workspace structure** - Same (`~/workspace/<repo>-<branch>/`)
-2. **Git workflow** - Identical (push/fetch operations)
-3. **SSHFS mount location** - Same (`~/.agent-vm-mounts/workspace/`)
-4. **Common configs** - Same (`common/` directory)
-5. **Architecture** - Still single-VM, multi-workspace
-
-### Migration Steps
-
-1. **Fetch any uncommitted work from existing VM:**
-
-   ```bash
-   # Old Terraform-based command
-   ./agent-vm -b my-branch --fetch
-   ```
-
-2. **Destroy Terraform-based VM:**
-
-   ```bash
-   # Old Terraform-based command
-   ./agent-vm --destroy
-   ```
-
-3. **Install Lima and SSHFS** (see Prerequisites section above)
-
-4. **Create new Lima-based VM:**
-
-   ```bash
-   # New Lima-based command
-   ./agent-vm start
-   ```
-
-5. **Connect to your workspace:**
-
-   ```bash
-   # New Lima-based command
-   ./agent-vm connect my-branch
-   ```
-
-**Note:** Your git repository and branches are unaffected by the migration.
-Only the VM infrastructure changes.
 
 ## Troubleshooting
 

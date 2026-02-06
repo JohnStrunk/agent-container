@@ -1,3 +1,4 @@
 .env
 /.claude/
 /.ssh/
+vm/homedir.tar.gz
