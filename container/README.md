@@ -81,17 +81,23 @@ sudo dnf install -y podman
 
 ## Quick Start
 
-1. **Clone this repository** and create a symlink to make `agent-container`
-   globally available:
+1. **Make `agent-container` globally available** (optional):
 
    ```bash
-   git clone https://github.com/johnstrunk/agent-container.git
+   # From the repository root
    mkdir -p ~/.local/bin
-   ln -s "$(realpath agent-container/container/agent-container)" ~/.local/bin/agent-container
+   ln -s "$(pwd)/container/agent-container" ~/.local/bin/agent-container
    # Ensure ~/.local/bin is in your PATH
    ```
 
-2. **Navigate to your development repository** and start working on a branch:
+   Or use it directly from the container directory:
+
+   ```bash
+   cd container
+   ./agent-container -b my-feature-branch
+   ```
+
+2. **Navigate to a development repository** and start working on a branch:
 
    ```bash
    cd <your-development-repo>

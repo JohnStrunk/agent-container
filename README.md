@@ -7,7 +7,7 @@ approaches.
 
 | Feature | Container | VM |
 | ------- | --------- | --- |
-| **Startup time** | ~2 seconds | ~30-60 seconds |
+| **Startup time** | ~2 seconds | ~4 minutes |
 | **Isolation** | Strong (namespaces) | Strongest (full VM) |
 | **Nested virtualization** | No | Yes (via Lima) |
 | **Resource overhead** | Minimal | Moderate |
@@ -32,7 +32,8 @@ cd container
 
 ### VM Approach
 
-Full virtual machine isolation using Lima. Works on Linux and macOS.
+Full virtual machine isolation using Lima. Works on Linux, macOS, and
+Windows (via WSL2).
 
 → **[VM Documentation](vm/README.md)**
 
@@ -40,7 +41,7 @@ Full virtual machine isolation using Lima. Works on Linux and macOS.
 
 ```bash
 cd vm
-./agent-vm -b my-feature-branch
+./agent-vm connect my-feature-branch
 ```
 
 ## What's Inside
@@ -49,7 +50,7 @@ Both approaches provide:
 
 - **AI Coding Agents**: Claude Code, Gemini CLI, OpenCode AI, GitHub
   Copilot
-- **Development Tools**: Git, Node.js, Python, Go, Terraform
+- **Development Tools**: Git, Node.js, Python, Go
 - **Code Quality**: pre-commit hooks, linting, formatting
 - **Isolation**: Agent cannot access host filesystem or credentials
 
@@ -91,37 +92,6 @@ locally before committing changes to configs, Dockerfiles, or Lima
 configurations.
 
 See `docs/plans/2026-01-05-integration-tests-design.md` for design details.
-
-## Breaking Changes
-
-### 2026-01-05: GCP Credential Environment Variable
-
-The custom `GCP_CREDENTIALS_PATH` environment variable has been replaced with
-the industry-standard `GOOGLE_APPLICATION_CREDENTIALS`.
-
-**Migration required for VM approach:**
-
-```bash
-# Old (no longer works)
-export GCP_CREDENTIALS_PATH="~/my-service-account.json"
-./vm/agent-vm -b my-branch
-
-# New
-export GOOGLE_APPLICATION_CREDENTIALS="~/my-service-account.json"
-./vm/agent-vm -b my-branch
-```
-
-**Container and integration tests:** No action required (CLI flag still works)
-
-**Credential detection order:**
-
-- Container: `--gcp-credentials` flag → `GOOGLE_APPLICATION_CREDENTIALS` →
-  default
-- VM: `GOOGLE_APPLICATION_CREDENTIALS` → default
-- Integration tests: `--gcp-credentials` flag →
-  `GOOGLE_APPLICATION_CREDENTIALS` → default
-
-Default location: `~/.config/gcloud/application_default_credentials.json`
 
 ## License
 
