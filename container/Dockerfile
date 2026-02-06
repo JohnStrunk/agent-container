@@ -46,7 +46,12 @@ ARG HADOLINT_VERSION=2.12.0
 # Note: Version sourced from versions.txt, but ARG defaults kept for compatibility
 # hadolint ignore=SC2086
 RUN ARCH="$(uname -m)" && \
-    curl -fsSLo /tmp/hadolint https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-${ARCH} && \
+    case "$ARCH" in \
+        aarch64) HADOLINT_ARCH="arm64" ;; \
+        x86_64) HADOLINT_ARCH="x86_64" ;; \
+        *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
+    esac && \
+    curl -fsSLo /tmp/hadolint https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-linux-${HADOLINT_ARCH} && \
     install /tmp/hadolint /usr/local/bin && \
     rm -f /tmp/hadolint
 
