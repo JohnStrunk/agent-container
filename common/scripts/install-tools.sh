@@ -5,6 +5,32 @@
 
 set -e -o pipefail
 
+echo "Installing kubectl from Kubernetes apt repository..."
+# Create keyrings directory if it doesn't exist
+mkdir -p /etc/apt/keyrings
+chmod 755 /etc/apt/keyrings
+
+# Download and install the Kubernetes GPG key
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+# Add the Kubernetes apt repository
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /' | tee /etc/apt/sources.list.d/kubernetes.list
+chmod 644 /etc/apt/sources.list.d/kubernetes.list
+
+# Update package index and install kubectl
+apt-get update
+apt-get install -y kubectl
+
+# Verify kubectl installation
+if ! command -v kubectl &> /dev/null; then
+    echo "ERROR: kubectl installation failed - kubectl command not found"
+    exit 1
+fi
+
+echo "kubectl installed successfully:"
+kubectl version --client
+
 echo "Installing Claude Code using official installer..."
 curl -fsSL https://claude.ai/install.sh | bash
 
