@@ -3,6 +3,7 @@ bc
 ca-certificates
 curl
 bind9-dnsutils
+build-essential
 findutils
 g++
 gh
@@ -11,6 +12,10 @@ gnupg
 gosu
 jq
 less
+libffi-dev
+libreadline-dev
+libssl-dev
+libyaml-dev
 lsb-release
 lsof
 make
@@ -31,4 +36,6 @@ tcl
 tk
 unzip
 vim
+yamllint
 yq
+zlib1g-dev
