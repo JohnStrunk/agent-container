@@ -5,6 +5,39 @@
 
 set -e -o pipefail
 
+echo "Installing kubectl from Kubernetes apt repository..."
+# Determine the latest stable kubectl version
+KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+# Extract minor version (e.g., v1.35 from v1.35.0)
+KUBECTL_MINOR_VERSION=$(echo "$KUBECTL_VERSION" | cut -d. -f1,2)
+
+echo "Latest stable kubectl version: $KUBECTL_VERSION (using repository: $KUBECTL_MINOR_VERSION)"
+
+# Create keyrings directory if it doesn't exist
+mkdir -p /etc/apt/keyrings
+chmod 755 /etc/apt/keyrings
+
+# Download and install the Kubernetes GPG key
+curl -fsSL "https://pkgs.k8s.io/core:/stable:/${KUBECTL_MINOR_VERSION}/deb/Release.key" | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+# Add the Kubernetes apt repository
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${KUBECTL_MINOR_VERSION}/deb/ /" | tee /etc/apt/sources.list.d/kubernetes.list
+chmod 644 /etc/apt/sources.list.d/kubernetes.list
+
+# Update package index and install kubectl
+apt-get update
+apt-get install -y kubectl
+
+# Verify kubectl installation
+if ! command -v kubectl &> /dev/null; then
+    echo "ERROR: kubectl installation failed - kubectl command not found"
+    exit 1
+fi
+
+echo "kubectl installed successfully:"
+kubectl version --client
+
 echo "Installing Claude Code using official installer..."
 curl -fsSL https://claude.ai/install.sh | bash
 

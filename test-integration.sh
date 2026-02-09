@@ -413,13 +413,32 @@ test_vm_approach() {
     log "Cleaning up any existing test VMs..."
     ./agent-vm destroy 2>/dev/null || true
 
+    # Generate homedir.tar.gz required by Lima template
+    log "Generating homedir.tar.gz for template validation..."
+    local homedir_source="../common/homedir"
+    local homedir_tarball="homedir.tar.gz"
+    if [[ ! -d "$homedir_source" ]]; then
+        log_error "common/homedir directory not found at: $homedir_source"
+        return "$EXIT_TEST_FAILED"
+    fi
+    tar -czpf "$homedir_tarball" -C "$homedir_source" .
+    if [[ ! -f "$homedir_tarball" ]]; then
+        log_error "Failed to generate homedir.tar.gz"
+        return "$EXIT_TEST_FAILED"
+    fi
+    log "✓ Generated homedir.tar.gz"
+
     # Test 1: Validate Lima template
     log "Test 1: Validating Lima template..."
     if ! run_with_timeout 10 limactl validate agent-vm.yaml; then
         log_error "Lima template validation failed"
+        rm -f "$homedir_tarball"
         return "$EXIT_TEST_FAILED"
     fi
     log "✓ Lima template valid"
+
+    # Clean up generated tarball (agent-vm start will regenerate it)
+    rm -f "$homedir_tarball"
 
     # Test 2: Create VM via agent-vm start
     log "Test 2: Creating VM via agent-vm start..."
