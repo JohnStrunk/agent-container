@@ -5,18 +5,23 @@ set -e -o pipefail
 function initial_setup() {
     echo "=== Performing initial Claude setup ==="
 
-    # MCP servers
-    claude mcp add --transport stdio context7 -- npx -y @upstash/context7-mcp
-    claude mcp add --transport stdio docling -- uvx --from=docling-mcp docling-mcp-server --transport stdio
-    claude mcp add --transport stdio playwright -- npx -y @playwright/mcp --headless --isolated
-
     # Plugins
-    claude plugin marketplace add obra/superpowers-marketplace
-    claude plugin install superpowers@superpowers-marketplace
     # The official marketplace is built-in, but we have to add it separately
     # so that it can find the plugins before 1st startup
-    claude plugin marketplace add anthropics/claude-code
-    claude plugin install ralph-wiggum@claude-code-plugins
+    claude plugin marketplace add anthropics/claude-plugins-official
+    local plugins=(
+        claude-md-management
+        context7
+        gopls-lsp
+        playwright
+        pyright-lsp
+        security-guidance
+        superpowers
+        typescript-lsp
+    )
+    for plugin in "${plugins[@]}"; do
+        claude plugin install "${plugin}@claude-plugins-official"
+    done
 }
 
 
@@ -28,5 +33,4 @@ else
     claude plugin marketplace update
 fi
 
-#exec claude --allow-dangerously-skip-permissions "$@"
 exec claude --dangerously-skip-permissions "$@"
