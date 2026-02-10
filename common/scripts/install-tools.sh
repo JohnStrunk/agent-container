@@ -6,8 +6,15 @@
 set -e -o pipefail
 
 echo "Installing kubectl from Kubernetes apt repository..."
-# Determine the latest stable kubectl version
-KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+# Determine the latest stable kubectl version with timeout and fallback
+KUBECTL_VERSION=$(curl --max-time 10 -L -s https://dl.k8s.io/release/stable.txt 2>/dev/null || echo "")
+
+# Validate version format (should start with 'v' followed by numbers)
+if [[ ! "$KUBECTL_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Warning: Failed to detect kubectl version dynamically, using fallback v1.35.0"
+    KUBECTL_VERSION="v1.35.0"
+fi
+
 # Extract minor version (e.g., v1.35 from v1.35.0)
 KUBECTL_MINOR_VERSION=$(echo "$KUBECTL_VERSION" | cut -d. -f1,2)
 
