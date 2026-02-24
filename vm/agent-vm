@@ -223,6 +223,24 @@ GCPEOF
   rm -f "$SCRIPT_DIR/homedir.tar.gz"
 
   echo "✓ VM created successfully: $VM_NAME"
+
+  # Wait for SSH to be ready
+  echo "Waiting for VM to be ready..."
+  local max_wait=300
+  local elapsed=0
+  while ! ssh -F "$SSH_CONFIG" -o ConnectTimeout=5 -o BatchMode=yes \
+       "$VM_HOST" "exit" 2>/dev/null; do
+    sleep 5
+    elapsed=$((elapsed + 5))
+    if [[ $elapsed -ge $max_wait ]]; then
+      echo "ERROR: VM failed to start within 5 minutes" >&2
+      exit 1
+    fi
+  done
+  echo "✓ VM is ready"
+
+  # Mount workspace via SSHFS
+  mount_vm_workspace || true
 }
 
 function destroy_vm {
