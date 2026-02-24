@@ -448,19 +448,25 @@ test_vm_approach() {
     fi
     log "✓ VM created successfully"
 
-    # Verify SSHFS mount exists after start
-    if ! mountpoint -q "$HOME/.agent-vm-mounts/workspace" 2>/dev/null; then
-        echo "FAIL: SSHFS mount not created during VM start"
-        exit 1
-    fi
-    echo "✓ SSHFS mount exists after VM start"
+    # Test 2a: Verify SSHFS mount lifecycle change
+    # This validates that mount happens during start instead of connect
+    log "Test 2a: Verifying SSHFS mount after start..."
+    if command -v sshfs >/dev/null 2>&1; then
+        if ! mountpoint -q "$HOME/.agent-vm-mounts/workspace" 2>/dev/null; then
+            log_error "SSHFS mount not created during VM start"
+            return "$EXIT_TEST_FAILED"
+        fi
+        log "✓ SSHFS mount exists after VM start"
 
-    # Verify mount is accessible
-    if ! ls "$HOME/.agent-vm-mounts/workspace/" >/dev/null 2>&1; then
-        echo "FAIL: SSHFS mount not accessible"
-        exit 1
+        # Verify mount is accessible
+        if ! ls "$HOME/.agent-vm-mounts/workspace/" >/dev/null 2>&1; then
+            log_error "SSHFS mount not accessible"
+            return "$EXIT_TEST_FAILED"
+        fi
+        log "✓ SSHFS mount is accessible"
+    else
+        log "⚠ SSHFS not installed, skipping mount verification after start"
     fi
-    echo "✓ SSHFS mount is accessible"
 
     # Test 3: Verify VM exists in Lima
     log "Test 3: Verifying VM exists in Lima..."
