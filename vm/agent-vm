@@ -140,6 +140,9 @@ function start_vm {
       mount_vm_workspace || true
     else
       echo "VM is already running"
+
+      # Ensure mount exists
+      mount_vm_workspace || true
     fi
     return 0
   fi
