@@ -448,6 +448,20 @@ test_vm_approach() {
     fi
     log "✓ VM created successfully"
 
+    # Verify SSHFS mount exists after start
+    if ! mountpoint -q "$HOME/.agent-vm-mounts/workspace" 2>/dev/null; then
+        echo "FAIL: SSHFS mount not created during VM start"
+        exit 1
+    fi
+    echo "✓ SSHFS mount exists after VM start"
+
+    # Verify mount is accessible
+    if ! ls "$HOME/.agent-vm-mounts/workspace/" >/dev/null 2>&1; then
+        echo "FAIL: SSHFS mount not accessible"
+        exit 1
+    fi
+    echo "✓ SSHFS mount is accessible"
+
     # Test 3: Verify VM exists in Lima
     log "Test 3: Verifying VM exists in Lima..."
     # Use text format instead of JSON to work around Lima 2.0.3 bug with embedded binary data
