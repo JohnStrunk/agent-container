@@ -673,9 +673,6 @@ function connect_to_vm {
   repo_name="$(basename "$(git rev-parse --show-toplevel)")"
   workspace_name="${repo_name}-${branch_name}"
 
-  # Mount workspace via SSHFS (if not already mounted)
-  mount_vm_workspace || true
-
   # Check if workspace exists
   local workspace_exists=false
   if ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
