@@ -727,8 +727,8 @@ Options:
   -h, --help                      Show this help
 
 Workflow:
-  1. ./agent-vm start                         # Create/start VM
-  2. ./agent-vm connect feature-auth          # Create workspace, mount SSHFS
+  1. ./agent-vm start                         # Create/start VM, mount SSHFS
+  2. ./agent-vm connect feature-auth          # Create workspace (mount already available)
   3. Edit files at ~/.agent-vm-mounts/workspace/<repo>-<branch>/
   4. Build/test in VM SSH session
   5. Commit changes in VM
@@ -741,7 +741,7 @@ File Sharing:
   * Real-time sync via SSHFS
 
 Examples:
-  $0 start                                # Create/start VM
+  $0 start                                # Create/start VM, mount SSHFS
   $0 start --memory 16 --vcpu 8           # Create VM with 16GB RAM, 8 CPUs
   $0 status                               # Show VM state and workspaces
   $0 connect feature-auth                 # Create/connect to workspace

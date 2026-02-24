@@ -105,7 +105,7 @@ The `agent-vm` script manages all VM and workspace operations:
 
 ```bash
 # VM lifecycle
-./agent-vm start                        # Create/start VM
+./agent-vm start                        # Create/start VM, mount SSHFS
 ./agent-vm start --memory 16 --vcpu 8   # Create VM with custom resources
 ./agent-vm destroy                      # Delete VM and all workspaces
 ./agent-vm status                       # Show VM state and workspaces
