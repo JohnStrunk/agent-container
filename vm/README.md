@@ -150,7 +150,7 @@ This will:
 - Create a workspace directory for your branch
 - Initialize a git repository in the workspace
 - Push your branch to the workspace
-- Mount the workspace via SSHFS to `~/.agent-vm-mounts/workspace/`
+- Access the workspace via existing SSHFS mount at `~/.agent-vm-mounts/workspace/`
 - Drop you into an SSH session in the workspace directory
 
 ## Usage
@@ -158,7 +158,7 @@ This will:
 ### VM Lifecycle
 
 ```bash
-# Start VM (creates if doesn't exist)
+# Start VM and mount workspace via SSHFS (creates if doesn't exist)
 ./agent-vm start
 
 # Start with custom resources (creation-time only)
@@ -223,12 +223,13 @@ copilot
 
 **Workflow:**
 
-1. `./agent-vm connect feature-auth` - Starts VM and creates workspace
-2. Edit files at `~/.agent-vm-mounts/workspace/<repo>-feature-auth/`
+1. `./agent-vm start` - Starts VM and mounts workspace via SSHFS
+2. `./agent-vm connect feature-auth` - Creates workspace (mount already available)
+3. Edit files at `~/.agent-vm-mounts/workspace/<repo>-feature-auth/`
    on host using your IDE
-3. Build/test in VM SSH session
-4. Commit changes in VM
-5. `./agent-vm fetch feature-auth` - Fetch changes back to host repo
+4. Build/test in VM SSH session
+5. Commit changes in VM
+6. `./agent-vm fetch feature-auth` - Fetch changes back to host repo
 
 **Resource Efficiency:**
 
