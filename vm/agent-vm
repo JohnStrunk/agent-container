@@ -89,6 +89,22 @@ function mount_vm_workspace {
   fi
 }
 
+function wait_for_ssh_ready {
+  echo "Waiting for VM to be ready..."
+  local max_wait=300
+  local elapsed=0
+  while ! ssh -F "$SSH_CONFIG" -o ConnectTimeout=5 -o BatchMode=yes \
+       "$VM_HOST" "exit" 2>/dev/null; do
+    sleep 5
+    elapsed=$((elapsed + 5))
+    if [[ $elapsed -ge $max_wait ]]; then
+      echo "ERROR: VM failed to start within 5 minutes" >&2
+      exit 1
+    fi
+  done
+  echo "✓ VM is ready"
+}
+
 function start_vm {
   local memory="$1"
   local vcpu="$2"
@@ -116,8 +132,17 @@ function start_vm {
     if ! vm_is_running; then
       echo "Starting VM: $VM_NAME"
       limactl start --tty=false "$VM_NAME"
+
+      # Wait for SSH to be ready
+      wait_for_ssh_ready
+
+      # Mount workspace via SSHFS
+      mount_vm_workspace || true
     else
       echo "VM is already running"
+
+      # Ensure mount exists
+      mount_vm_workspace || true
     fi
     return 0
   fi
@@ -223,6 +248,12 @@ GCPEOF
   rm -f "$SCRIPT_DIR/homedir.tar.gz"
 
   echo "✓ VM created successfully: $VM_NAME"
+
+  # Wait for SSH to be ready
+  wait_for_ssh_ready
+
+  # Mount workspace via SSHFS
+  mount_vm_workspace || true
 }
 
 function destroy_vm {
@@ -579,19 +610,10 @@ function ensure_vm_running {
     limactl start --tty=false "$VM_NAME"
 
     # Wait for SSH to be ready
-    echo "Waiting for VM to be ready..."
-    local max_wait=300
-    local elapsed=0
-    while ! ssh -F "$SSH_CONFIG" -o ConnectTimeout=5 -o BatchMode=yes \
-         "$VM_HOST" "exit" 2>/dev/null; do
-      sleep 5
-      elapsed=$((elapsed + 5))
-      if [[ $elapsed -ge $max_wait ]]; then
-        echo "ERROR: VM failed to start within 5 minutes" >&2
-        exit 1
-      fi
-    done
-    echo "✓ VM is ready"
+    wait_for_ssh_ready
+
+    # Mount workspace via SSHFS (ensure mount exists after restart)
+    mount_vm_workspace || true
   fi
 }
 
@@ -651,9 +673,6 @@ function connect_to_vm {
   repo_name="$(basename "$(git rev-parse --show-toplevel)")"
   workspace_name="${repo_name}-${branch_name}"
 
-  # Mount workspace via SSHFS (if not already mounted)
-  mount_vm_workspace || true
-
   # Check if workspace exists
   local workspace_exists=false
   if ssh -F "$SSH_CONFIG" -o StrictHostKeyChecking=no "$VM_HOST" \
@@ -708,8 +727,8 @@ Options:
   -h, --help                      Show this help
 
 Workflow:
-  1. ./agent-vm start                         # Create/start VM
-  2. ./agent-vm connect feature-auth          # Create workspace, mount SSHFS
+  1. ./agent-vm start                         # Create/start VM, mount SSHFS
+  2. ./agent-vm connect feature-auth          # Create workspace (mount already available)
   3. Edit files at ~/.agent-vm-mounts/workspace/<repo>-<branch>/
   4. Build/test in VM SSH session
   5. Commit changes in VM
@@ -722,7 +741,7 @@ File Sharing:
   * Real-time sync via SSHFS
 
 Examples:
-  $0 start                                # Create/start VM
+  $0 start                                # Create/start VM, mount SSHFS
   $0 start --memory 16 --vcpu 8           # Create VM with 16GB RAM, 8 CPUs
   $0 status                               # Show VM state and workspaces
   $0 connect feature-auth                 # Create/connect to workspace
