@@ -50,31 +50,6 @@ provision:
     path: /tmp/install-tools.sh
     file: common-scripts/install-tools.sh
     permissions: "0755"
-  # Copy homedir configuration (tarball, extracted by provision script)
-  - mode: data
-    path: /tmp/homedir.tar.gz
-    file: homedir.tar.gz
-
-  # Extract homedir tarball to /tmp/homedir before main provisioning
-  - mode: system
-    script: |
-      #!/bin/bash
-      set -e -o pipefail
-      echo "[INFO] Extracting homedir configuration..."
-      mkdir -p /tmp/homedir
-
-      # Extract with explicit permission preservation (-p flag)
-      tar -xzpf /tmp/homedir.tar.gz -C /tmp/homedir
-
-      # Verify extraction succeeded by checking for sentinel file
-      if [ ! -f /tmp/homedir/.claude.json ]; then
-        echo "[ERROR] Tarball extraction failed - .claude.json not found"
-        exit 1
-      fi
-
-      echo "[INFO] Tarball extraction verified successfully"
-      rm -f /tmp/homedir.tar.gz
-      echo "[INFO] Homedir extracted to /tmp/homedir"
 
   # System-level provisioning
   # Note: Lima reads the file from template directory and embeds it

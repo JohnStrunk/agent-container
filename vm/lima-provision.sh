@@ -40,10 +40,6 @@ expected_files=(
     "/tmp/versions.txt"
     "/tmp/envvars.txt"
     "/tmp/install-tools.sh"
-    "/tmp/homedir/.claude.json"
-    "/tmp/homedir/.gitconfig"
-    "/tmp/homedir/.claude/settings.json"
-    "/tmp/homedir/.local/bin/start-claude"
 )
 
 missing_count=0
@@ -184,44 +180,7 @@ chmod +x /tmp/install-tools.sh
 /tmp/install-tools.sh
 
 # ==============================================================================
-# 6. Deploy home directory configuration files
-# ==============================================================================
-info "Deploying home directory configuration from common/homedir/..."
-
-USER_HOME=$(getent passwd "$LIMA_USER" | cut -d: -f6)
-if [ -z "$USER_HOME" ] || [ ! -d "$USER_HOME" ]; then
-    error "User home directory not found for: $LIMA_USER"
-fi
-
-# Verify homedir files were copied to VM
-if [ ! -d /tmp/homedir ]; then
-    error "common/homedir not found at /tmp/homedir"
-fi
-
-# Copy all files from common/homedir to user home
-# Preserve directory structure and permissions
-info "Copying configuration files to $USER_HOME..."
-cp -r /tmp/homedir/. "$USER_HOME/"
-
-# Ensure .local/bin scripts are executable
-if [ -d "$USER_HOME/.local/bin" ]; then
-    find "$USER_HOME/.local/bin" -type f -exec chmod +x {} +
-fi
-
-# Ensure .claude scripts are executable
-if [ -d "$USER_HOME/.claude" ]; then
-    find "$USER_HOME/.claude" -type f -name "*.sh" -exec chmod +x {} +
-fi
-
-# Set ownership
-USER_UID=$(id -u "$LIMA_USER")
-USER_GID=$(id -g "$LIMA_USER")
-chown -R "$USER_UID:$USER_GID" "$USER_HOME"
-
-info "Home directory configuration deployed from common/homedir/"
-
-# ==============================================================================
-# 7. Inject GCP credentials if provided
+# 6. Inject GCP credentials if provided
 # ==============================================================================
 info "Checking for GCP credentials..."
 
@@ -250,7 +209,7 @@ else
 fi
 
 # ==============================================================================
-# 8. Configure user permissions
+# 7. Configure user permissions
 # ==============================================================================
 info "Configuring user permissions..."
 
@@ -275,7 +234,7 @@ pkill -u "$LIMA_USER" sshd || true
 systemctl reload sshd || systemctl restart sshd
 
 # ==============================================================================
-# 9. Create environment marker
+# 8. Create environment marker
 # ==============================================================================
 echo "agent-vm" > /etc/agent-environment
 chmod 644 /etc/agent-environment
