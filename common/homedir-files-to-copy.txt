@@ -7,3 +7,4 @@
 .claude.json
 .config/opencode
 .gemini
+.gitconfig
