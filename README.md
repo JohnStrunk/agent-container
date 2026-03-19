@@ -58,7 +58,7 @@ Both approaches provide:
 
 Both approaches share configurations and package lists from `common/`:
 
-- `common/homedir/` - Shared configuration files (.claude.json, .gitconfig)
+- `common/homedir-files-to-copy.txt` - Paths to copy from host `$HOME`
 - `common/packages/` - Package lists (apt, npm, python) and version pins
 
 ## Integration Tests

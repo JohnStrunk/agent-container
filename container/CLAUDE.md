@@ -415,7 +415,7 @@ This tests:
 **When to run:**
 
 - Before committing Dockerfile changes
-- Before committing changes to `common/homedir/` configs
+- Before committing changes to `common/homedir-files-to-copy.txt`
 - Before committing entrypoint script changes
 - After updating package lists in `common/packages/`
 

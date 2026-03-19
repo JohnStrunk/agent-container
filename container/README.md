@@ -143,21 +143,13 @@ copilot
 
 ### Configuration
 
-The container uses built-in configurations from `../common/homedir/`:
+Configuration files are copied from your host home directory at
+container startup, based on `common/homedir-files-to-copy.txt`.
 
-- `.claude.json` - Claude Code settings (model, preferences)
-- `.gitconfig` - Git configuration (name, email, aliases)
-- `start-claude` - Helper script
-
-**These are built into the container image and NOT shared with your host.**
 Changes you make inside the container are lost when it exits.
 
-To customize permanently:
-
-1. Edit files in `../common/homedir/`
-2. Rebuild the image:
-   `docker build -t ghcr.io/johnstrunk/agent-container -f Dockerfile ..`
-3. Restart your container
+To change which files are copied, edit
+`common/homedir-files-to-copy.txt`.
 
 ### Environment Variables
 
@@ -203,15 +195,8 @@ The credential file is:
 - `entrypoint.sh` - Container startup script with user setup
 - `entrypoint_user.sh` - User-level initialization
 - `agent-container` - Script to create worktrees and start containers
-- `../common/homedir/` - Shared configuration files (built into container)
-  - `.claude.json` - Claude Code settings
-  - `.gitconfig` - Git configuration
-  - `.gitignore` - Git ignore patterns
-  - `.claude/settings.json` - Claude settings
-  - `.claude/statusline-command.sh` - Status line script
-  - `.claude/skills/` - Claude skills directory
-  - `.config/opencode/opencode.jsonc` - OpenCode AI configuration
-  - `.local/bin/start-claude` - Helper script
+- `../common/homedir-files-to-copy.txt` - Paths to copy from host
+  `$HOME` at container startup
 - `../common/packages/` - Package lists (used during build)
   - `apt-packages.txt` - Debian packages
   - `npm-packages.txt` - Node.js packages
