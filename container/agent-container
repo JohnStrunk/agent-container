@@ -6,6 +6,8 @@ set -e -o pipefail
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/container-runtime.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../common/scripts/copy-home-lib.sh"
 
 WORKTREE_BASE_DIR=~/src/worktrees
 IMAGE_NAME="ghcr.io/johnstrunk/agent-container"
@@ -79,6 +81,32 @@ function setup_worktree {
             git worktree add -b "$branch_name" "$worktree_dir"
         fi
     fi
+}
+
+function build_homedir_tarball {
+    local spec_file="$SCRIPT_DIR/../common/homedir-files-to-copy.txt"
+    local staging_dir
+    staging_dir=$(mktemp -d)
+
+    if [[ ! -f "$spec_file" ]]; then
+        echo "Warning: $spec_file not found, skipping home copy"
+        echo "$staging_dir"
+        return 0
+    fi
+
+    # Use the shared library to copy matched files to staging
+    copy_home_files "$spec_file" "$HOME" "$staging_dir"
+
+    # Create tarball from staging
+    tar -czf "$staging_dir/homedir.tar.gz" \
+        -C "$staging_dir" \
+        --exclude=homedir.tar.gz .
+
+    # Remove the staged files, keep only the tarball
+    find "$staging_dir" -mindepth 1 -maxdepth 1 \
+        ! -name homedir.tar.gz -exec rm -rf {} +
+
+    echo "$staging_dir"
 }
 
 # Parse command line options
@@ -218,6 +246,12 @@ if [[ -n "$runtime_flags_str" ]]; then
     read -ra RUNTIME_FLAGS <<< "$runtime_flags_str"
 fi
 
+# Build homedir tarball from user's home
+HOMEDIR_STAGING=$(build_homedir_tarball)
+if [[ -f "$HOMEDIR_STAGING/homedir.tar.gz" ]]; then
+    MOUNT_ARGS+=("-v" "$HOMEDIR_STAGING:/tmp/host-home:ro")
+fi
+
 $CONTAINER_RUNTIME run --rm "${TTY_FLAGS[@]}" \
     --name "$CONTANIER_NAME" \
     --hostname "$CONTANIER_NAME" \
@@ -231,6 +265,9 @@ $CONTAINER_RUNTIME run --rm "${TTY_FLAGS[@]}" \
     "${CREDENTIAL_ARGS[@]}" \
     "${ENVVAR_FLAGS[@]}" \
     ghcr.io/johnstrunk/agent-container:latest "${CONTAINER_COMMAND[@]}"
+
+# Clean up homedir staging
+rm -rf "$HOMEDIR_STAGING"
 
 # Remove the worktree after exiting the container
 if [[ "$USE_GIT" == 1 ]]; then
