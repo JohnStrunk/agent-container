@@ -322,6 +322,69 @@ test_container() {
     build_time=$(($(date +%s) - start_time))
     log "[Container] Build complete (${build_time}s)"
 
+    # Test: home directory tarball mechanism
+    log "[Container] Testing home directory tarball mechanism..."
+    local test_home_dir
+    test_home_dir=$(mktemp -d)
+    mkdir -p "$test_home_dir/.claude-test"
+    echo "copy-home-test" > "$test_home_dir/.claude-test/marker.txt"
+
+    local test_spec
+    test_spec=$(mktemp)
+    echo ".claude-test" > "$test_spec"
+
+    # Build tarball using the library
+    local test_staging
+    test_staging=$(mktemp -d)
+    copy_home_files "$test_spec" "$test_home_dir" "$test_staging"
+    tar -czf "$test_staging/homedir.tar.gz" \
+        -C "$test_staging" --exclude=homedir.tar.gz . 2>/dev/null
+    find "$test_staging" -mindepth 1 -maxdepth 1 \
+        ! -name homedir.tar.gz -exec rm -rf {} +
+
+    # Run container with test tarball and verify extraction
+    if ! $CONTAINER_RUNTIME run --rm \
+        -v "$test_staging:/tmp/host-home:ro" \
+        -e EUID="$(id -u)" -e EGID="$(id -g)" \
+        -e HOME="$HOME" -e USER="$USER" \
+        ghcr.io/johnstrunk/agent-container:latest \
+        bash -c "cat ~/.claude-test/marker.txt" \
+        | grep -q "copy-home-test"; then
+        log_error "Home directory tarball extraction failed"
+        rm -rf "$test_home_dir" "$test_staging" "$test_spec"
+        return 1
+    fi
+    rm -rf "$test_home_dir" "$test_staging" "$test_spec"
+    log "[Container] ✓ Tarball mechanism works"
+
+    # Test: real spec file copies host home files into container
+    log "[Container] Testing real spec copies host home files..."
+    if [[ -f "$HOME/.claude.json" ]]; then
+        local real_staging
+        real_staging=$(mktemp -d)
+        local real_spec="$SCRIPT_DIR/common/homedir-files-to-copy.txt"
+        copy_home_files "$real_spec" "$HOME" "$real_staging"
+        tar -czf "$real_staging/homedir.tar.gz" \
+            -C "$real_staging" --exclude=homedir.tar.gz . \
+            2>/dev/null
+        find "$real_staging" -mindepth 1 -maxdepth 1 \
+            ! -name homedir.tar.gz -exec rm -rf {} +
+        if ! $CONTAINER_RUNTIME run --rm \
+            -v "$real_staging:/tmp/host-home:ro" \
+            -e EUID="$(id -u)" -e EGID="$(id -g)" \
+            -e HOME="$HOME" -e USER="$USER" \
+            ghcr.io/johnstrunk/agent-container:latest \
+            bash -c "test -f ~/.claude.json"; then
+            log_error "Real spec file copy: .claude.json not found"
+            rm -rf "$real_staging"
+            return 1
+        fi
+        rm -rf "$real_staging"
+        log "[Container] ✓ Host home files copied correctly"
+    else
+        log "[Container] ⚠ No ~/.claude.json on host, skipping"
+    fi
+
     # Step 2: Run test in container
     log "[Container] Testing Claude Code in container..."
 
@@ -413,32 +476,13 @@ test_vm_approach() {
     log "Cleaning up any existing test VMs..."
     ./agent-vm destroy 2>/dev/null || true
 
-    # Generate homedir.tar.gz required by Lima template
-    log "Generating homedir.tar.gz for template validation..."
-    local homedir_source="../common/homedir"
-    local homedir_tarball="homedir.tar.gz"
-    if [[ ! -d "$homedir_source" ]]; then
-        log_error "common/homedir directory not found at: $homedir_source"
-        return "$EXIT_TEST_FAILED"
-    fi
-    tar -czpf "$homedir_tarball" -C "$homedir_source" .
-    if [[ ! -f "$homedir_tarball" ]]; then
-        log_error "Failed to generate homedir.tar.gz"
-        return "$EXIT_TEST_FAILED"
-    fi
-    log "✓ Generated homedir.tar.gz"
-
     # Test 1: Validate Lima template
     log "Test 1: Validating Lima template..."
     if ! run_with_timeout 10 limactl validate agent-vm.yaml; then
         log_error "Lima template validation failed"
-        rm -f "$homedir_tarball"
         return "$EXIT_TEST_FAILED"
     fi
     log "✓ Lima template valid"
-
-    # Clean up generated tarball (agent-vm start will regenerate it)
-    rm -f "$homedir_tarball"
 
     # Test 2: Create VM via agent-vm start
     log "Test 2: Creating VM via agent-vm start..."
@@ -500,6 +544,62 @@ test_vm_approach() {
         return "$EXIT_TEST_FAILED"
     fi
     log "✓ Provisioning completed"
+
+    # Test 5a: Verify initial home directory sync during start
+    log "Test 5a: Verifying initial home directory sync..."
+    # sync_home_to_vm runs during start_vm - verify a known file
+    # arrived (spec includes .claude.json, .claude, .config/opencode)
+    if [[ -f "$HOME/.claude.json" ]]; then
+        if ! ./agent-vm connect -- test -f ~/.claude.json; then
+            log_error "Initial home sync failed: .claude.json not in VM"
+            return "$EXIT_TEST_FAILED"
+        fi
+        log "✓ Initial home sync: .claude.json present in VM"
+    else
+        log "⚠ No ~/.claude.json on host, skipping initial sync check"
+    fi
+
+    # Test 5b: Home directory refresh-home sync
+    log "Test 5b: Testing refresh-home sync..."
+    # Create a test file in host home
+    mkdir -p "$HOME/.claude-test"
+    echo "sync-test-v1" > "$HOME/.claude-test/marker.txt"
+
+    # Add .claude-test to spec temporarily
+    local orig_spec="$SCRIPT_DIR/common/homedir-files-to-copy.txt"
+    cp "$orig_spec" "${orig_spec}.bak"
+    echo ".claude-test" >> "$orig_spec"
+
+    # Run refresh-home
+    ./agent-vm refresh-home
+    # Verify file arrived in VM
+    if ! ./agent-vm connect -- \
+        cat ~/.claude-test/marker.txt \
+        | grep -q "sync-test-v1"; then
+        log_error "Home directory sync failed"
+        mv "${orig_spec}.bak" "$orig_spec"
+        rm -rf "$HOME/.claude-test"
+        return "$EXIT_TEST_FAILED"
+    fi
+    log "✓ Home directory refresh-home sync works"
+
+    # Test 5c: refresh-home overwrites existing files
+    log "Test 5c: Testing refresh-home overwrite..."
+    echo "sync-test-v2" > "$HOME/.claude-test/marker.txt"
+    ./agent-vm refresh-home
+    if ! ./agent-vm connect -- \
+        cat ~/.claude-test/marker.txt \
+        | grep -q "sync-test-v2"; then
+        log_error "Home directory refresh overwrite failed"
+        mv "${orig_spec}.bak" "$orig_spec"
+        rm -rf "$HOME/.claude-test"
+        return "$EXIT_TEST_FAILED"
+    fi
+    log "✓ Home directory refresh overwrite works"
+
+    # Cleanup
+    mv "${orig_spec}.bak" "$orig_spec"
+    rm -rf "$HOME/.claude-test"
 
     # Test 6: Create first workspace
     log "Test 6: Creating first workspace..."
@@ -733,10 +833,11 @@ chmod +x /tmp/test-claude.sh
 main() {
     parse_args "$@"
 
+    SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+
     # Detect container runtime for container tests
     if [[ "$TEST_TYPE" == "container" ]] || [[ "$TEST_TYPE" == "all" ]]; then
         # Source runtime detection from container/lib
-        SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
         # shellcheck source=container/lib/container-runtime.sh
         # shellcheck disable=SC1091
         source "$SCRIPT_DIR/container/lib/container-runtime.sh"
@@ -744,6 +845,11 @@ main() {
         CONTAINER_RUNTIME=$(detect_runtime)
         log "Detected container runtime: $CONTAINER_RUNTIME"
     fi
+
+    # Source copy-home library for home dir tests
+    # shellcheck source=common/scripts/copy-home-lib.sh
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/common/scripts/copy-home-lib.sh"
 
     # Check environment - integration tests cannot run in container
     if [[ -f /etc/agent-environment ]]; then

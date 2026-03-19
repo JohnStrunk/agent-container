@@ -37,10 +37,11 @@ if [[ "$CURRENT_UID" == "0" ]]; then
     mkdir -p "$HOMEDIR"
     chown "$USERNAME":"$GROUPNAME" "$HOMEDIR"
 
-    # Manually copy /etc/skel/ contents to home directory
-    # -n flag prevents overwriting existing files (handles pre-existing mounts)
-    if [[ -d /etc/skel ]]; then
-        gosu "$USERNAME" cp -rn /etc/skel/. "$HOMEDIR/"
+    # Extract home directory files from host (if provided)
+    # The tarball is on a read-only mount; no need to remove it
+    if [[ -f /tmp/host-home/homedir.tar.gz ]]; then
+        gosu "$USERNAME" tar -xzf /tmp/host-home/homedir.tar.gz \
+            -C "$HOMEDIR/"
     fi
 
     # Ensure critical user directories exist and have correct ownership
@@ -78,10 +79,11 @@ else
     # Create home directory
     mkdir -p "$HOMEDIR"
 
-    # Copy /etc/skel/ contents to home directory
-    # -n flag prevents overwriting existing files
-    if [[ -d /etc/skel ]]; then
-        cp -rn /etc/skel/. "$HOMEDIR/" 2>/dev/null || true
+    # Extract home directory files from host (if provided)
+    # The tarball is on a read-only mount; no need to remove it
+    if [[ -f /tmp/host-home/homedir.tar.gz ]]; then
+        tar -xzf /tmp/host-home/homedir.tar.gz \
+            -C "$HOMEDIR/" 2>/dev/null || true
     fi
 
     # Ensure critical user directories exist

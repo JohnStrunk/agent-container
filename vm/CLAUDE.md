@@ -23,26 +23,12 @@ vm/
 ├── agent-vm                   # CLI wrapper (all functionality inline)
 ├── common-packages/           # Symlink to ../common/packages/ (required by Lima)
 ├── common-scripts/            # Symlink to ../common/scripts/ (required by Lima)
-├── common-homedir/            # Symlink to ../common/homedir/ (required by Lima)
 ├── README.md                  # VM documentation
 ├── CLAUDE.md                  # This file
 └── TROUBLESHOOTING.md         # Debugging guide
 
 ../common/
-├── homedir/                   # Shared configs (deployed to VM)
-│   ├── .claude.json
-│   ├── .gitconfig
-│   ├── .gitignore
-│   ├── .claude/
-│   │   ├── settings.json
-│   │   ├── statusline-command.sh
-│   │   └── skills/
-│   ├── .config/
-│   │   └── opencode/
-│   │       └── opencode.jsonc
-│   └── .local/
-│       └── bin/
-│           └── start-claude
+├── homedir-files-to-copy.txt  # Paths to copy from host $HOME
 ├── packages/                  # Package lists (used in provisioning)
 │   ├── apt-packages.txt
 │   ├── npm-packages.txt
@@ -84,15 +70,15 @@ The provisioning script (`lima-provision.sh`) reads configuration from
 `common/` directory:
 
 1. **Symlinks** - The `vm/` directory contains symlinks (`common-packages`,
-   `common-scripts`, `common-homedir`) pointing to `../common/` directories.
+   `common-scripts`) pointing to `../common/` directories.
    These are required because Lima's `file:` property doesn't support `../`
    in paths.
 2. **Package lists** - Lima copies files from `common/packages/*.txt`
    using `mode: data` in the template (referenced via symlinks)
 3. **Version pins** - Sourced from `common/packages/versions.txt`
-4. **Homedir configs** - Dynamically generated as `homedir.tar.gz` from
-   `../common/homedir/` during VM creation by the `agent-vm` script,
-   then deployed and extracted in VM
+4. **Homedir configs** - Rsynced from user's home directory on first
+   VM start (and on demand via `agent-vm refresh-home`), based on
+   `common/homedir-files-to-copy.txt`
 5. **Tool installation** - Uses `common/scripts/install-tools.sh`
 
 This ensures container and VM approaches stay synchronized.
@@ -117,6 +103,7 @@ The `agent-vm` script manages all VM and workspace operations:
 ./agent-vm fetch feature-name           # Fetch changes from VM
 ./agent-vm clean feature-name           # Delete specific workspace
 ./agent-vm clean-all                    # Delete all workspaces
+./agent-vm refresh-home                 # Re-sync home files
 
 # Running commands
 ./agent-vm connect feature-name -- claude   # Run claude in workspace
@@ -318,7 +305,7 @@ This tests:
 - Before committing Lima template changes (`agent-vm.yaml`)
 - Before committing provisioning script changes (`lima-provision.sh`)
 - Before committing changes to `agent-vm` CLI script
-- Before committing changes to `common/homedir/` configs
+- Before committing changes to `common/homedir-files-to-copy.txt`
 - After updating package lists in `common/packages/`
 
 ## Security Considerations

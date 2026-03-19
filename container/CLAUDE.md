@@ -28,8 +28,8 @@ container/
 └── CLAUDE.md              # This file
 
 ../common/
-├── homedir/               # Shared configs (.claude.json, .gitconfig)
-└── packages/              # Package lists (apt, npm, python)
+├── homedir-files-to-copy.txt  # Paths to copy from host $HOME
+└── packages/                  # Package lists (apt, npm, python)
 ```
 
 ## Key Technologies & Tools
@@ -73,7 +73,8 @@ Pre-commit hooks are extensively configured for:
 
 - Workspace directory (read-write)
 - Main git repository (read-write, for worktree commits)
-- Built-in configs from `../common/homedir/` (ephemeral)
+- Home directory files from host (ephemeral, per
+  `common/homedir-files-to-copy.txt`)
 - Injected credentials (ephemeral)
 - Shared cache volume `agent-container-cache`
 
@@ -86,19 +87,12 @@ Pre-commit hooks are extensively configured for:
 
 **Configuration files:**
 
-- Located in `../common/homedir/` directory:
-  - `.claude.json` - Claude Code settings
-  - `.gitconfig` - Git configuration
-  - `.gitignore` - Git ignore patterns
-  - `.claude/settings.json` - Claude settings
-  - `.claude/statusline-command.sh` - Status line script
-  - `.claude/skills/` - Claude skills directory
-  - `.config/opencode/opencode.jsonc` - OpenCode AI configuration
-  - `.local/bin/start-claude` - Helper script
-- Built into container image at build time
-- Automatically copied to agent's home directory
+- Copied from user's home directory at container startup
+- Paths specified in `common/homedir-files-to-copy.txt`
+- Delivered via tarball mounted at `/tmp/host-home`
 - Changes inside container are NOT persistent
-- To modify permanently: edit `../common/homedir/` and rebuild image
+- To modify which files are copied: edit
+  `common/homedir-files-to-copy.txt`
 
 **Credentials:**
 
@@ -275,7 +269,8 @@ Credentials are ephemeral and deleted when container exits.
 1. `entrypoint.sh` - Creates user/group, sets up permissions, injects
    credentials
    - Creates user with host UID/GID
-   - Manually copies `/etc/skel/` to home (configs from `../common/homedir/`)
+   - Extracts home directory tarball from `/tmp/host-home/`
+     (files from host based on `common/homedir-files-to-copy.txt`)
    - Decodes and writes GCP credentials if provided
 2. `entrypoint_user.sh` - User-level setup, runs pre-commit
 
@@ -293,10 +288,16 @@ Credentials are ephemeral and deleted when container exits.
 
 - `agent-container-cache` → `~/.cache` - Shared across all sessions
 
+**Host home tarball (read-only, temporary):**
+
+- `/tmp/host-home` - Tarball of user's home directory files
+  (extracted at startup, based on
+  `common/homedir-files-to-copy.txt`)
+
 **No other mounts.** No access to:
 
-- `~/.claude` (config built into image)
-- `~/.gemini` (config built into image)
+- `~/.claude` (copied from host at startup)
+- `~/.gemini` (copied from host at startup)
 - `~/.config/gcloud` (credentials injected at runtime)
 - `~/.cache/pre-commit` (now in cache volume)
 - `/var/run/docker.sock` (no Docker access)
@@ -408,13 +409,13 @@ This tests:
 
 - Docker image builds successfully
 - Credentials inject correctly
-- Config files deploy from `common/homedir/`
+- Home directory files copy from host
 - Claude Code starts and responds to prompts
 
 **When to run:**
 
 - Before committing Dockerfile changes
-- Before committing changes to `common/homedir/` configs
+- Before committing changes to `common/homedir-files-to-copy.txt`
 - Before committing entrypoint script changes
 - After updating package lists in `common/packages/`
 

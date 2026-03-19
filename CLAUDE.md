@@ -117,16 +117,11 @@ cd ..
 Both approaches share resources from `common/` - this is the **single
 source of truth** for configuration:
 
-- `common/homedir/` - Configuration files deployed to user home
-  directory
-  - `.claude.json` - Claude Code settings
-  - `.gitconfig` - Git configuration
-  - `.gitignore` - Git ignore patterns
-  - `.claude/settings.json` - Claude settings
-  - `.claude/statusline-command.sh` - Status line script
-  - `.claude/skills/` - Claude skills directory
-  - `.config/opencode/opencode.jsonc` - OpenCode AI configuration
-  - `.local/bin/start-claude` - Helper script
+- `common/homedir-files-to-copy.txt` - Spec file listing paths
+  (relative to `$HOME`) to copy from the user's home directory
+  into the environment. Supports glob patterns and `!` exclusions.
+  Format is similar to `.gitignore` but specifies files TO COPY.
+  Missing paths are silently skipped.
 - `common/packages/` - Package lists and version pins
   - `apt-packages.txt` - Debian packages
   - `npm-packages.txt` - Node.js packages

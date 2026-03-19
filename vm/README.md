@@ -274,21 +274,19 @@ Customize VM resources at creation time:
 **Note:** Resource settings only apply at VM creation time. To change
 resources, destroy and recreate the VM.
 
-### Built-in Configurations
+### Home Directory Configuration
 
-The VM uses built-in configurations from `../common/homedir/`:
+Configuration files are synced from your host home directory to the
+VM on first start, based on `common/homedir-files-to-copy.txt`.
 
-- `.claude.json` - Claude Code settings (model, preferences)
-- `.gitconfig` - Git configuration (name, email, aliases)
-- `.local/bin/start-claude` - Helper script for starting Claude Code
+To re-sync after changing files on the host:
 
-These are deployed to the VM during provisioning and are shared with the
-container approach.
+```bash
+./agent-vm refresh-home
+```
 
-To customize permanently:
-
-1. Edit files in `../common/homedir/`
-2. Destroy and recreate the VM to apply changes
+To change which files are synced, edit
+`common/homedir-files-to-copy.txt`.
 
 ### Environment Variables
 
@@ -423,43 +421,20 @@ automatically create it from current HEAD:
 
 ## Homedir Configuration Management
 
-### Tarball Approach
+Home directory files are synced from the host to the VM via rsync
+over SSH. The files to sync are specified in
+`common/homedir-files-to-copy.txt`.
 
-The VM uses a tarball (`homedir.tar.gz`) to deploy configuration files from
-`../common/homedir/` because Lima's `mode: data` doesn't fully support
-directories with hidden files (dotfiles).
+**Sync happens:**
 
-**Why use a tarball:**
+- Automatically on first VM start
+- Automatically when restarting a stopped VM
+- On demand via `./agent-vm refresh-home`
 
-- Lima's `mode: data` can copy individual files but struggles with nested
-  directory structures
-- Hidden files (`.claude.json`, `.gitconfig`, etc.) need special handling
-- Tarball preserves file permissions and directory structure
-- Single atomic operation for entire config tree
+**To change which files are synced:**
 
-**Automatic generation:**
-
-The `homedir.tar.gz` tarball is automatically generated from `../common/homedir/`
-during VM creation by the `agent-vm` script. You don't need to manually
-regenerate it - just modify files in `../common/homedir/` and the next VM
-creation will pick up the changes.
-
-**What gets deployed:**
-
-- `.claude.json` - Claude Code settings
-- `.gitconfig` - Git configuration
-- `.gitignore` - Git ignore patterns
-- `.claude/settings.json` - Claude settings
-- `.claude/statusline-command.sh` - Status line script
-- `.claude/skills/` - Claude skills directory
-- `.config/opencode/opencode.jsonc` - OpenCode AI configuration
-- `.local/bin/start-claude` - Helper script
-
-**Extraction verification:**
-
-The provisioning script verifies extraction succeeded by checking for
-`.claude.json` as a sentinel file. If this file is missing after extraction,
-provisioning fails with a clear error message.
+Edit `common/homedir-files-to-copy.txt`. Supports glob patterns
+and `!` exclusions. Missing paths are silently skipped.
 
 ## File Structure
 
@@ -472,21 +447,10 @@ vm/
 ├── lima-provision.sh      # VM provisioning script
 ├── agent-vm               # CLI wrapper script
 ├── common-packages/       # Symlink to ../common/packages/ (required by Lima)
-├── common-scripts/        # Symlink to ../common/scripts/ (required by Lima)
-└── common-homedir/        # Symlink to ../common/homedir/ (required by Lima)
+└── common-scripts/        # Symlink to ../common/scripts/ (required by Lima)
 
 ../common/
-├── homedir/               # Shared configs (deployed to VM)
-│   ├── .claude.json
-│   ├── .gitconfig
-│   ├── .gitignore
-│   ├── .claude/
-│   │   ├── settings.json
-│   │   ├── statusline-command.sh
-│   │   └── skills/
-│   ├── .config/
-│   │   └── opencode/
-│   │       └── opencode.jsonc
+├── homedir-files-to-copy.txt  # Paths to copy from host $HOME
 │   └── .local/
 │       └── bin/
 │           └── start-claude
@@ -510,7 +474,7 @@ This VM uses forward SSHFS for strong security isolation:
 **What the agent CAN access:**
 
 - ✅ Workspace directories in VM (read-write)
-- ✅ Built-in configs from `../common/homedir/` (deployed during provisioning)
+- ✅ Home directory files from host (synced via rsync)
 - ✅ Injected credentials (from provisioning)
 - ✅ Other workspaces in the VM (accessible via filesystem)
 
