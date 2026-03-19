@@ -1,0 +1,9 @@
+# Files/directories to copy from user's $HOME into the environment.
+# Paths are relative to $HOME. Directories are copied recursively.
+# Standard glob patterns are supported. Lines starting with !
+# exclude. Missing paths are silently skipped.
+
+.claude
+.claude.json
+.config/opencode
+.gemini
