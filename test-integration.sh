@@ -322,8 +322,8 @@ test_container() {
     build_time=$(($(date +%s) - start_time))
     log "[Container] Build complete (${build_time}s)"
 
-    # Test: home directory copy mechanism
-    log "[Container] Testing home directory copy..."
+    # Test: home directory tarball mechanism
+    log "[Container] Testing home directory tarball mechanism..."
     local test_home_dir
     test_home_dir=$(mktemp -d)
     mkdir -p "$test_home_dir/.claude-test"
@@ -336,14 +336,13 @@ test_container() {
     # Build tarball using the library
     local test_staging
     test_staging=$(mktemp -d)
-    HOME="$test_home_dir" copy_home_files "$test_spec" \
-        "$test_home_dir" "$test_staging"
+    copy_home_files "$test_spec" "$test_home_dir" "$test_staging"
     tar -czf "$test_staging/homedir.tar.gz" \
-        -C "$test_staging" --exclude=homedir.tar.gz .
+        -C "$test_staging" --exclude=homedir.tar.gz . 2>/dev/null
     find "$test_staging" -mindepth 1 -maxdepth 1 \
         ! -name homedir.tar.gz -exec rm -rf {} +
 
-    # Run container with test tarball
+    # Run container with test tarball and verify extraction
     if ! $CONTAINER_RUNTIME run --rm \
         -v "$test_staging:/tmp/host-home:ro" \
         -e EUID="$(id -u)" -e EGID="$(id -g)" \
@@ -351,12 +350,40 @@ test_container() {
         ghcr.io/johnstrunk/agent-container:latest \
         bash -c "cat ~/.claude-test/marker.txt" \
         | grep -q "copy-home-test"; then
-        log_error "Home directory copy test failed"
+        log_error "Home directory tarball extraction failed"
         rm -rf "$test_home_dir" "$test_staging" "$test_spec"
         return 1
     fi
     rm -rf "$test_home_dir" "$test_staging" "$test_spec"
-    log "[Container] ✓ Home directory copy works"
+    log "[Container] ✓ Tarball mechanism works"
+
+    # Test: real spec file copies host home files into container
+    log "[Container] Testing real spec copies host home files..."
+    if [[ -f "$HOME/.claude.json" ]]; then
+        local real_staging
+        real_staging=$(mktemp -d)
+        local real_spec="$SCRIPT_DIR/common/homedir-files-to-copy.txt"
+        copy_home_files "$real_spec" "$HOME" "$real_staging"
+        tar -czf "$real_staging/homedir.tar.gz" \
+            -C "$real_staging" --exclude=homedir.tar.gz . \
+            2>/dev/null
+        find "$real_staging" -mindepth 1 -maxdepth 1 \
+            ! -name homedir.tar.gz -exec rm -rf {} +
+        if ! $CONTAINER_RUNTIME run --rm \
+            -v "$real_staging:/tmp/host-home:ro" \
+            -e EUID="$(id -u)" -e EGID="$(id -g)" \
+            -e HOME="$HOME" -e USER="$USER" \
+            ghcr.io/johnstrunk/agent-container:latest \
+            bash -c "test -f ~/.claude.json"; then
+            log_error "Real spec file copy: .claude.json not found"
+            rm -rf "$real_staging"
+            return 1
+        fi
+        rm -rf "$real_staging"
+        log "[Container] ✓ Host home files copied correctly"
+    else
+        log "[Container] ⚠ No ~/.claude.json on host, skipping"
+    fi
 
     # Step 2: Run test in container
     log "[Container] Testing Claude Code in container..."
@@ -518,8 +545,22 @@ test_vm_approach() {
     fi
     log "✓ Provisioning completed"
 
-    # Test: home directory sync
-    log "Testing home directory sync..."
+    # Test 5a: Verify initial home directory sync during start
+    log "Test 5a: Verifying initial home directory sync..."
+    # sync_home_to_vm runs during start_vm - verify a known file
+    # arrived (spec includes .claude.json, .claude, .config/opencode)
+    if [[ -f "$HOME/.claude.json" ]]; then
+        if ! ./agent-vm connect -- test -f ~/.claude.json; then
+            log_error "Initial home sync failed: .claude.json not in VM"
+            return "$EXIT_TEST_FAILED"
+        fi
+        log "✓ Initial home sync: .claude.json present in VM"
+    else
+        log "⚠ No ~/.claude.json on host, skipping initial sync check"
+    fi
+
+    # Test 5b: Home directory refresh-home sync
+    log "Test 5b: Testing refresh-home sync..."
     # Create a test file in host home
     mkdir -p "$HOME/.claude-test"
     echo "sync-test-v1" > "$HOME/.claude-test/marker.txt"
@@ -540,10 +581,10 @@ test_vm_approach() {
         rm -rf "$HOME/.claude-test"
         return "$EXIT_TEST_FAILED"
     fi
-    log "✓ Home directory sync works"
+    log "✓ Home directory refresh-home sync works"
 
-    # Test: refresh-home overwrites
-    log "Testing refresh-home overwrite..."
+    # Test 5c: refresh-home overwrites existing files
+    log "Test 5c: Testing refresh-home overwrite..."
     echo "sync-test-v2" > "$HOME/.claude-test/marker.txt"
     ./agent-vm refresh-home
     if ! ./agent-vm connect -- \
