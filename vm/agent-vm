@@ -107,7 +107,7 @@ function sync_home_to_vm {
   build_rsync_filters "$spec_file" "$HOME" > "$filter_file"
 
   # Rsync to VM over SSH
-  rsync -a --relative \
+  rsync -a --relative --checksum \
     --filter="merge $filter_file" \
     -e "ssh -F $SSH_CONFIG -o StrictHostKeyChecking=no" \
     "$HOME/./" "${VM_HOST}:$(get_vm_home)/"
