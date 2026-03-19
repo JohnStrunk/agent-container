@@ -73,7 +73,10 @@ that:
    directory structure and permissions
 
 Both the container host-side script and the VM host-side script
-source this library.
+source this library. The library rsyncs matched files into a
+local destination directory. For the container path, the caller
+rsyncs into a temporary staging directory and then tars it. For
+the VM path, the caller rsyncs directly into the VM over SSH.
 
 ### Rsync Translation
 
@@ -160,6 +163,9 @@ files.
 
 - Remove the homedir deployment section that copies from
   `/tmp/homedir` to the user's home (lines 189-221)
+- Remove the `/tmp/homedir` entries from the `expected_files`
+  array (lines 43-46) since those files are no longer shipped
+  via Lima `mode: data`
 
 ### Symlink Removal
 
@@ -177,6 +183,7 @@ Delete the entire `common/homedir/` directory and all its contents:
 - `.gitignore`
 - `.config/opencode/opencode.jsonc`
 - `.local/bin/start-claude`
+- `.gitkeep`
 
 ## Documentation Updates
 
