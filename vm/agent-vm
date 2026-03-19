@@ -3,6 +3,8 @@
 set -e -o pipefail
 
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../common/scripts/copy-home-lib.sh"
 VM_NAME="agent-vm"
 VM_HOST="lima-${VM_NAME}"
 SSH_CONFIG="$HOME/.lima/${VM_NAME}/ssh.config"
@@ -89,6 +91,31 @@ function mount_vm_workspace {
   fi
 }
 
+function sync_home_to_vm {
+  local spec_file="$SCRIPT_DIR/../common/homedir-files-to-copy.txt"
+
+  if [[ ! -f "$spec_file" ]]; then
+    echo "Warning: $spec_file not found, skipping home copy"
+    return 0
+  fi
+
+  echo "Syncing home directory files to VM..."
+
+  # Build rsync filter file
+  local filter_file
+  filter_file=$(mktemp)
+  build_rsync_filters "$spec_file" "$HOME" > "$filter_file"
+
+  # Rsync to VM over SSH
+  rsync -a --relative \
+    --filter="merge $filter_file" \
+    -e "ssh -F $SSH_CONFIG -o StrictHostKeyChecking=no" \
+    "$HOME/./" "${VM_HOST}:$(get_vm_home)/"
+
+  rm -f "$filter_file"
+  echo "✓ Home directory files synced to VM"
+}
+
 function wait_for_ssh_ready {
   echo "Waiting for VM to be ready..."
   local max_wait=300
@@ -135,6 +162,9 @@ function start_vm {
 
       # Wait for SSH to be ready
       wait_for_ssh_ready
+
+      # Sync home directory files to VM
+      sync_home_to_vm
 
       # Mount workspace via SSHFS
       mount_vm_workspace || true
@@ -228,6 +258,9 @@ GCPEOF
 
   # Wait for SSH to be ready
   wait_for_ssh_ready
+
+  # Sync home directory files to VM
+  sync_home_to_vm
 
   # Mount workspace via SSHFS
   mount_vm_workspace || true
@@ -697,6 +730,7 @@ Commands:
   fetch <branch>                  Fetch branch from VM workspace to host
   clean <branch>                  Delete specific workspace
   clean-all                       Delete all workspaces (VM stays running)
+  refresh-home                    Re-sync home directory files to VM
 
 Options:
   --memory <GB>                   VM memory in GB (default: 8, creation only)
@@ -728,6 +762,7 @@ Examples:
   $0 connect feature-auth -- claude       # Run claude directly
   $0 clean old-feature                    # Remove workspace
   $0 clean-all                            # Remove all workspaces
+  $0 refresh-home                         # Re-sync home files
   $0 destroy                              # Destroy VM
 
 Storage:
@@ -912,6 +947,16 @@ case "$COMMAND" in
       esac
     done
     clean_all_workspaces "$FORCE"
+    ;;
+
+  refresh-home)
+    if [[ $# -gt 0 ]]; then
+      echo "Error: refresh-home takes no arguments" >&2
+      usage
+      exit 1
+    fi
+    ensure_vm_running
+    sync_home_to_vm
     ;;
 
   -h|--help)
