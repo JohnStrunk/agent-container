@@ -79,7 +79,7 @@ function mount_vm_workspace {
         -o reconnect \
         -o ServerAliveInterval=15 \
         -o ServerAliveCountMax=3 \
-        -o follow_symlinks \
+        -o transform_symlinks \
         "${VM_HOST}:workspace" "$MOUNT_DIR"; then
     echo "✓ Mounted at: $MOUNT_DIR"
     return 0
