@@ -56,7 +56,13 @@ function mount_vm_workspace {
 
   # Check if already mounted
   if mountpoint -q "$MOUNT_DIR" 2>/dev/null; then
-    return 0
+    # Verify mount has correct options (transform_symlinks, not follow_symlinks)
+    # If mounted with old options, remount with current options
+    if pgrep -af "sshfs.*${MOUNT_DIR}\$" | grep -q "transform_symlinks"; then
+      return 0
+    fi
+    echo "Remounting SSHFS with updated options..."
+    unmount_vm_workspace
   fi
 
   echo "Mounting VM workspace via SSHFS..."
