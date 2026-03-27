@@ -24,8 +24,11 @@ ssh:
   loadDotSSHPubKeys: false  # Use Lima-generated keys only
   forwardAgent: false       # Security: no agent forwarding
 
-# Port forwarding (none needed by default)
-portForwards: []
+# Port forwarding: Lima auto-forwards guest localhost ports to host localhost.
+# By default, hostIP is 127.0.0.1 (not exposed to public network).
+# To forward a specific port to all interfaces, add:
+#   - guestPort: 8080
+#     hostIP: "0.0.0.0"
 
 # Provisioning scripts
 provision:
