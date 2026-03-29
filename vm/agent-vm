@@ -122,6 +122,32 @@ function sync_home_to_vm {
   echo "✓ Home directory files synced to VM"
 }
 
+function install_plugins_in_vm {
+  local spec_file="$SCRIPT_DIR/../common/plugins-to-install.txt"
+
+  if [[ ! -f "$spec_file" ]]; then
+    echo "Warning: $spec_file not found, skipping plugin installation"
+    return 0
+  fi
+
+  echo "Installing Claude plugins in VM..."
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # Skip comments and blank lines
+    [[ -z "$line" || "$line" =~ ^# ]] && continue
+
+    if [[ "$line" =~ ^marketplace[[:space:]]+(.*) ]]; then
+      echo "  Adding marketplace: ${BASH_REMATCH[1]}"
+      ssh -F "$SSH_CONFIG" "$VM_HOST" \
+        "claude plugin marketplace add '${BASH_REMATCH[1]}'" || true
+    else
+      echo "  Installing plugin: $line"
+      ssh -F "$SSH_CONFIG" "$VM_HOST" \
+        "claude plugin install '$line'" || true
+    fi
+  done < "$spec_file"
+  echo "✓ Claude plugins installed in VM"
+}
+
 function wait_for_ssh_ready {
   echo "Waiting for VM to be ready..."
   local max_wait=300
@@ -169,8 +195,9 @@ function start_vm {
       # Wait for SSH to be ready
       wait_for_ssh_ready
 
-      # Sync home directory files to VM
+      # Sync home directory files and install plugins
       sync_home_to_vm
+      install_plugins_in_vm
 
       # Mount workspace via SSHFS
       mount_vm_workspace || true
@@ -265,8 +292,9 @@ GCPEOF
   # Wait for SSH to be ready
   wait_for_ssh_ready
 
-  # Sync home directory files to VM
+  # Sync home directory files and install plugins
   sync_home_to_vm
+  install_plugins_in_vm
 
   # Mount workspace via SSHFS
   mount_vm_workspace || true
@@ -963,6 +991,7 @@ case "$COMMAND" in
     fi
     ensure_vm_running
     sync_home_to_vm
+    install_plugins_in_vm
     ;;
 
   -h|--help)
