@@ -4,6 +4,8 @@
 # exclude. Missing paths are silently skipped.
 
 .claude
+!.claude/plugins
+!.claude/todos
 .claude.json
 .config/opencode
 .gemini

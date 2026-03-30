@@ -180,7 +180,21 @@ chmod +x /tmp/install-tools.sh
 /tmp/install-tools.sh
 
 # ==============================================================================
-# 6. Inject GCP credentials if provided
+# 6. Update Claude Code to latest version
+# ==============================================================================
+info "Updating Claude Code to latest version..."
+claude update || true
+
+# Re-copy updated binary to system path (installer updates ~/.local/bin)
+CLAUDE_LOCAL="$(readlink -f /root/.local/bin/claude 2>/dev/null || echo "")"
+if [ -n "$CLAUDE_LOCAL" ] && [ -f "$CLAUDE_LOCAL" ]; then
+    cp "$CLAUDE_LOCAL" /usr/local/bin/claude
+    chmod 755 /usr/local/bin/claude
+    info "Claude Code updated and copied to /usr/local/bin"
+fi
+
+# ==============================================================================
+# 7. Inject GCP credentials if provided
 # ==============================================================================
 info "Checking for GCP credentials..."
 
@@ -209,7 +223,7 @@ else
 fi
 
 # ==============================================================================
-# 7. Configure user permissions
+# 8. Configure user permissions
 # ==============================================================================
 info "Configuring user permissions..."
 
@@ -234,7 +248,7 @@ pkill -u "$LIMA_USER" sshd || true
 systemctl reload sshd || systemctl restart sshd
 
 # ==============================================================================
-# 8. Create environment marker
+# 9. Create environment marker
 # ==============================================================================
 echo "agent-vm" > /etc/agent-environment
 chmod 644 /etc/agent-environment
