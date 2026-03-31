@@ -5,6 +5,14 @@ set -e -o pipefail
 # shellcheck disable=SC2016
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 
+# Expand ~ to $HOME in environment variables (e.g. KUBECONFIG=~/.kube/config)
+for var in $(compgen -e); do
+    val="${!var}"
+    if [[ "$val" == "~"* ]]; then
+        export "$var"="$HOME${val#\~}"
+    fi
+done
+
 pre-commit gc > /dev/null 2>&1 || true
 (pre-commit install-hooks > /dev/null 2>&1 || true) &
 
