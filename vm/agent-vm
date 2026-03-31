@@ -674,17 +674,33 @@ function connect_to_vm {
   # Source profile.d scripts to get PATH and other environment settings
   env_exports+="for script in /etc/profile.d/*.sh; do [ -r \"\$script\" ] && source \"\$script\"; done; "
 
+  # Lines with VAR=value set a specific value (~ is expanded to VM $HOME);
+  # lines with just VAR pass through the host's current value.
   local envvars_file="$SCRIPT_DIR/../common/packages/envvars.txt"
   if [[ -f "$envvars_file" ]]; then
-    while IFS= read -r var || [[ -n "$var" ]]; do
+    while IFS= read -r line || [[ -n "$line" ]]; do
       # Skip empty lines and comments
-      [[ -z "$var" || "$var" =~ ^# ]] && continue
-      # Only export if variable is set in host environment
-      if [[ -n "${!var:-}" ]]; then
-        # Escape special characters for shell
-        local escaped_value
-        escaped_value=$(printf '%s' "${!var}" | sed "s/'/'\\\\''/g")
-        env_exports+="export $var='$escaped_value'; "
+      [[ -z "$line" || "$line" =~ ^# ]] && continue
+      if [[ "$line" == *=* ]]; then
+        # VAR=value — use the specified value, expand ~ to VM $HOME
+        local var_name="${line%%=*}"
+        local var_value="${line#*=}"
+        if [[ "$var_value" == "~"* ]]; then
+          var_value="\$HOME${var_value#\~}"
+          env_exports+="export $var_name=\"$var_value\"; "
+        else
+          local escaped_value
+          escaped_value=$(printf '%s' "$var_value" | sed "s/'/'\\\\''/g")
+          env_exports+="export $var_name='$escaped_value'; "
+        fi
+      else
+        # VAR — pass through from host if set
+        local var="$line"
+        if [[ -n "${!var:-}" ]]; then
+          local escaped_value
+          escaped_value=$(printf '%s' "${!var}" | sed "s/'/'\\\\''/g")
+          env_exports+="export $var='$escaped_value'; "
+        fi
       fi
     done < "$envvars_file"
   fi
