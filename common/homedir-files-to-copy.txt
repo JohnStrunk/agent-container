@@ -3,6 +3,7 @@
 # Standard glob patterns are supported. Lines starting with !
 # exclude. Missing paths are silently skipped.
 
+.agents
 .claude
 !.claude/plugins
 !.claude/todos
