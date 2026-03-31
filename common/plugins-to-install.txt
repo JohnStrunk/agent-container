@@ -1,0 +1,14 @@
+# Claude plugins to install in the container environment.
+# Lines starting with "marketplace" add a plugin marketplace.
+# Other non-empty, non-comment lines are plugin IDs to install.
+# Format: plugin-name@marketplace-name
+
+# Marketplaces (added before plugins)
+marketplace anthropics/claude-plugins-official
+marketplace anthropics/claude-code
+
+# Plugins
+ralph-loop@claude-plugins-official
+superpowers@claude-plugins-official
+playwright@claude-plugins-official
+frontend-design@claude-plugins-official

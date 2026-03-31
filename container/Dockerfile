@@ -73,9 +73,22 @@ RUN chmod +x /tmp/install-tools.sh && \
     rm /tmp/install-tools.sh
 
 
+# Copy plugin installation spec
+COPY ../common/plugins-to-install.txt /etc/claude-plugins.txt
+
 # Create environment marker file to identify container environment
 RUN echo "agent-container" > /etc/agent-environment && \
     chmod 644 /etc/agent-environment
+
+# Update Claude Code to latest version and re-copy to system path
+# The installer places claude in ~/.local/bin, which was copied to
+# /usr/local/bin by install-tools.sh. After update, we must re-copy.
+RUN claude update || true
+RUN CLAUDE_LOCAL="$(readlink -f /root/.local/bin/claude 2>/dev/null || echo "")" && \
+    if [ -n "$CLAUDE_LOCAL" ] && [ -f "$CLAUDE_LOCAL" ]; then \
+        cp "$CLAUDE_LOCAL" /usr/local/bin/claude && \
+        chmod 755 /usr/local/bin/claude; \
+    fi
 
 COPY container/entrypoint.sh /entrypoint.sh
 RUN chmod a+rx /entrypoint.sh
