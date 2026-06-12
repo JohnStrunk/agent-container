@@ -35,7 +35,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
     grep -v '^#' /tmp/apt-packages.txt | grep -v '^$' | xargs apt-get install -y --no-install-recommends
 
 # Install uv and uvx from the official Astral image
-COPY --from=ghcr.io/astral-sh/uv:latest@sha256:eaa5f1a3305307aaf9e67fe2bbba1d85ebbb2d8a63bce23af21797bfafbe0f8b /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:latest@sha256:ff07b86af50d4d9391d9daf4ff89ce427bc544f9aae87057e69a1cc0aa369946 /uv /uvx /bin/
 
 # Install golang from builder stage
 COPY --from=golang-installer /tmp/go /usr/local/go
