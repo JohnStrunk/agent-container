@@ -1,5 +1,5 @@
 # Stage 1: Download and extract Go
-FROM debian:13-slim@sha256:4e401d95de7083948053197a9c3913343cd06b706bf15eb6a0c3ccd26f436a0e AS golang-installer
+FROM debian:13-slim@sha256:f3da28155e2e26086464eba22cd235b22200b7143e8f3e1811bf359e3114bf96 AS golang-installer
 ARG GOLANG_VERSION=1.25.0
 # hadolint ignore=DL3008,SC2086
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     tar -C /tmp -xzf /tmp/go.tar.gz
 
 # Stage 2: Final image
-FROM debian:13-slim@sha256:4e401d95de7083948053197a9c3913343cd06b706bf15eb6a0c3ccd26f436a0e
+FROM debian:13-slim@sha256:f3da28155e2e26086464eba22cd235b22200b7143e8f3e1811bf359e3114bf96
 
 # PYTHON_TOOLS documented here for reference
 ENV PYTHON_TOOLS=dvc[all],pipenv,poetry,pre-commit
